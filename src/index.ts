@@ -1,2 +1,2 @@
-export { registerApplication, updateApplications } from "./application";
+export { registerApps, updateApps } from "./app";
 export { MicroRouter } from "./router";

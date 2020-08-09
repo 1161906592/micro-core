@@ -1,4 +1,4 @@
-import { updateApplications } from "./application";
+import { updateApps } from "./app";
 
 export class MicroRouter {
   base: string;
@@ -6,22 +6,21 @@ export class MicroRouter {
   constructor(base?: string) {
     this.base = normalizeBase(base);
     window.addEventListener("popstate", function () {
-      updateApplications();
+      updateApps();
     });
   }
 
   push(url: string) {
-    console.log(this.getCurrentLocation(), url);
     if (this.getCurrentLocation() === url) {
       return;
     }
     history.pushState(null, "", url);
-    updateApplications();
+    updateApps();
   }
 
   replace(url: string) {
     history.replaceState(null, "", url);
-    updateApplications();
+    updateApps();
   }
 
   go(delta: number) {

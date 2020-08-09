@@ -1,62 +1,69 @@
-export interface ApplicationLifecycle {
+export interface AppLifecycle {
   bootstrap: () => Promise<void>[];
   mount: () => Promise<void>[];
   unmount: () => Promise<void>[];
 }
 
-export interface Application {
+export interface App {
   name: string;
   active: () => boolean;
-  loader: () => Promise<ApplicationLifecycle>
+  loader: () => Promise<AppLifecycle>
 }
 
-enum ApplicationStatus {
+enum AppStatus {
   NOT_LOAD,
   NOT_MOUNTED,
   MOUNTED
 }
 
-interface RuntimeApplication extends Application {
-  status: ApplicationStatus;
+interface RuntimeApp extends App {
+  status: AppStatus;
   bootstrap?: () => Promise<void>[];
   mount?: () => Promise<void>[];
   unmount?: () => Promise<void>[];
 }
 
-const apps: RuntimeApplication[] = [];
+const registeredApps: RuntimeApp[] = [];
 
-export function registerApplication(app: Application) {
-  if (__DEV__) {
-    if (apps.find(d => d.name === app.name)) {
-      console.error(`存在与 ${app.name} 同名的应用已经被注册`);
-    }
+export function registerApps(apps: App): void;
+export function registerApps(apps: App[]): void;
+export function registerApps(apps: App | App[]) {
+  if (!Array.isArray(apps)) {
+    apps = [apps];
   }
-  const runtimeApp: RuntimeApplication = {
-    ...app,
-    status: ApplicationStatus.NOT_LOAD
-  };
-  apps.push(runtimeApp);
+  apps.forEach((app) => {
+    if (__DEV__) {
+      if (registeredApps.find(d => d.name === app.name)) {
+        console.error(`存在与 ${app.name} 同名的应用已经被注册`);
+      }
+    }
+    const runtimeApp: RuntimeApp = {
+      ...app,
+      status: AppStatus.NOT_LOAD
+    };
+    registeredApps.push(runtimeApp);
+  });
 }
 
-function diffApplications() {
-  const appsToLoad: RuntimeApplication[] = [];
-  const appsToMount: RuntimeApplication[] = [];
-  const appsToUnmount: RuntimeApplication[] = [];
-  apps.forEach((app) => {
+function diffApps() {
+  const appsToLoad: RuntimeApp[] = [];
+  const appsToMount: RuntimeApp[] = [];
+  const appsToUnmount: RuntimeApp[] = [];
+  registeredApps.forEach((app) => {
     const isActive = shouldActive(app);
     switch (app.status) {
-      case ApplicationStatus.NOT_LOAD:
+      case AppStatus.NOT_LOAD:
         if (isActive) {
           appsToLoad.push(app);
           appsToMount.push(app);
         }
         break;
-      case ApplicationStatus.NOT_MOUNTED:
+      case AppStatus.NOT_MOUNTED:
         if (isActive) {
           appsToMount.push(app);
         }
         break;
-      case ApplicationStatus.MOUNTED:
+      case AppStatus.MOUNTED:
         if (!isActive) {
           appsToUnmount.push(app);
         }
@@ -66,7 +73,7 @@ function diffApplications() {
   return { appsToLoad, appsToMount, appsToUnmount };
 }
 
-function shouldActive(app: RuntimeApplication) {
+function shouldActive(app: RuntimeApp) {
   try {
     return app.active();
   } catch (e) {
@@ -75,7 +82,7 @@ function shouldActive(app: RuntimeApplication) {
   }
 }
 
-async function loadApp(app: RuntimeApplication) {
+async function loadApp(app: RuntimeApp) {
   try {
     const { bootstrap, mount, unmount } = await app.loader();
     app.bootstrap = bootstrap;
@@ -87,26 +94,26 @@ async function loadApp(app: RuntimeApplication) {
   }
 }
 
-async function mountApp(app: RuntimeApplication) {
+async function mountApp(app: RuntimeApp) {
   try {
     await app.mount!();
-    app.status = ApplicationStatus.MOUNTED;
+    app.status = AppStatus.MOUNTED;
   } catch (e) {
     console.error(e);
   }
 }
 
-async function unmountApp(app: RuntimeApplication) {
+async function unmountApp(app: RuntimeApp) {
   try {
     await app.unmount!();
-    app.status = ApplicationStatus.NOT_MOUNTED;
+    app.status = AppStatus.NOT_MOUNTED;
   } catch (e) {
     console.error(e);
   }
 }
 
-export async function updateApplications() {
-  const { appsToLoad, appsToMount, appsToUnmount } = diffApplications();
+export async function updateApps() {
+  const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
   appsToUnmount.map((app) => unmountApp(app));
   await Promise.all(appsToLoad.map((app) => loadApp(app)));
   await Promise.all(appsToMount.map((app) => mountApp(app)));
