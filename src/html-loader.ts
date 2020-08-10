@@ -1,6 +1,5 @@
-import { proxy, ProxyType } from "./proxy";
-import { request } from "./util";
-import { AppLifecycle } from "./app";
+import { request } from "./utils";
+import { RemoteAppConfig, RemoteAppLifecycle, ProxyType } from "./interface";
 
 const MATCH_ANY_OR_NO_PROPERTY = /["'=\w\s\/]*/;
 const SCRIPT_URL_RE = new RegExp(
@@ -36,41 +35,37 @@ const TEST_URL = /^(?:https?):\/\/[-a-zA-Z0-9.]+/;
 
 const REPLACED_BY_BERIAL = "Script replaced by Berial.";
 
-export async function importHtml(entry: string): Promise<{
-  lifecycle: AppLifecycle
+export async function importHtml(app: RemoteAppConfig): Promise<{
+  lifecycle: RemoteAppLifecycle
   styleNodes: HTMLStyleElement[]
-  bodyNode: HTMLTemplateElement
+  bodyNode: HTMLDivElement
 }> {
-  const template = await request(app.entry as string);
+  const template = await request(app.entry);
   const styleNodes = await loadCSS(template);
   const bodyNode = loadBody(template);
   const lifecycle = await loadScript(template, window, app.name);
   return { lifecycle, styleNodes, bodyNode };
 }
 
-export async function loadScript(template: string, global: ProxyType, name: string): Promise<Lifecycles> {
+export async function loadScript(template: string, global: ProxyType, name: string): Promise<RemoteAppLifecycle> {
   const { scriptURLs, scripts } = parseScript(template);
   const fetchedScripts = await Promise.all(scriptURLs.map((url) => request(url)));
   const scriptsToLoad = fetchedScripts.concat(scripts);
 
-  let bootstrap: PromiseFn[] = [];
-  let unmount: PromiseFn[] = [];
-  let mount: PromiseFn[] = [];
+  let lifecycle;
 
   scriptsToLoad.forEach((script) => {
-    const lifecycles = runScript(script, global, name);
-    bootstrap = [...bootstrap, lifecycles.bootstrap];
-    mount = [...mount, lifecycles.mount];
-    unmount = [...unmount, lifecycles.unmount];
+    lifecycle = runScript(script, global, name);
   });
 
-  return { bootstrap, unmount, mount };
+  if (!lifecycle) {
+    throw new Error(`找不到 ${name} 的应用入口`);
+  }
+
+  return lifecycle;
 }
 
-function parseScript(template: string): {
-  scriptURLs: string[]
-  scripts: string[]
-} {
+function parseScript(template: string): { scriptURLs: string[]; scripts: string[]; } {
   const scriptURLs: string[] = [];
   const scripts: string[] = [];
   SCRIPT_URL_RE.lastIndex = SCRIPT_CONTENT_RE.lastIndex = 0;
@@ -94,18 +89,16 @@ function parseScript(template: string): {
   };
 }
 
-function runScript(script: string, global: ProxyType, umdName: string): Lifecycle {
+function runScript(script: string, global: ProxyType, umdName: string): RemoteAppLifecycle {
   const resolver = new Function(
   "window",
   `
-    with(window.IS_SANDBOX) {
-      try {
-        ${script}
-        return window['${umdName}']
-      }
-      catch(e) {
-        console.log(e)
-      }
+    try {
+      ${script}
+      return window['${umdName}']
+    }
+    catch(e) {
+      console.log(e)
     }
   `
   );
@@ -153,11 +146,11 @@ function parseCSS(template: string): {
   };
 }
 
-function loadBody(template: string): HTMLTemplateElement {
+function loadBody(template: string): HTMLDivElement {
   let bodyContent = template.match(BODY_CONTENT_RE)?.[1] ?? "";
   bodyContent = bodyContent.replace(SCRIPT_ANY_RE, scriptReplacer);
 
-  const body = document.createElement("template");
+  const body = document.createElement("div");
   body.innerHTML = bodyContent;
   return body;
 

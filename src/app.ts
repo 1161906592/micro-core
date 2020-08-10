@@ -1,14 +1,4 @@
-export interface AppLifecycle {
-  bootstrap: () => Promise<void>[];
-  mount: () => Promise<void>[];
-  unmount: () => Promise<void>[];
-}
-
-export interface App {
-  name: string;
-  active: () => boolean;
-  loader: () => Promise<AppLifecycle>
-}
+import { AppConfig, AppLifecycle } from "./interface";
 
 enum AppStatus {
   NOT_LOAD,
@@ -16,18 +6,15 @@ enum AppStatus {
   MOUNTED
 }
 
-interface RuntimeApp extends App {
+interface App extends AppConfig, AppLifecycle {
   status: AppStatus;
-  bootstrap?: () => Promise<void>[];
-  mount?: () => Promise<void>[];
-  unmount?: () => Promise<void>[];
 }
 
-const registeredApps: RuntimeApp[] = [];
+const registeredApps: App[] = [];
 
-export function registerApps(apps: App): void;
-export function registerApps(apps: App[]): void;
-export function registerApps(apps: App | App[]) {
+export function registerApps(apps: AppConfig): void;
+export function registerApps(apps: AppConfig[]): void;
+export function registerApps(apps: AppConfig | AppConfig[]) {
   if (!Array.isArray(apps)) {
     apps = [apps];
   }
@@ -37,18 +24,18 @@ export function registerApps(apps: App | App[]) {
         console.error(`存在与 ${app.name} 同名的应用已经被注册`);
       }
     }
-    const runtimeApp: RuntimeApp = {
+    const runtimeApp = {
       ...app,
       status: AppStatus.NOT_LOAD
     };
-    registeredApps.push(runtimeApp);
+    registeredApps.push(runtimeApp as App);
   });
 }
 
 function diffApps() {
-  const appsToLoad: RuntimeApp[] = [];
-  const appsToMount: RuntimeApp[] = [];
-  const appsToUnmount: RuntimeApp[] = [];
+  const appsToLoad: App[] = [];
+  const appsToMount: App[] = [];
+  const appsToUnmount: App[] = [];
   registeredApps.forEach((app) => {
     const isActive = shouldActive(app);
     switch (app.status) {
@@ -73,7 +60,7 @@ function diffApps() {
   return { appsToLoad, appsToMount, appsToUnmount };
 }
 
-function shouldActive(app: RuntimeApp) {
+function shouldActive(app: App) {
   try {
     return app.active();
   } catch (e) {
@@ -82,7 +69,7 @@ function shouldActive(app: RuntimeApp) {
   }
 }
 
-async function loadApp(app: RuntimeApp) {
+async function loadApp(app: App) {
   try {
     const { bootstrap, mount, unmount } = await app.loader();
     app.bootstrap = bootstrap;
@@ -94,18 +81,18 @@ async function loadApp(app: RuntimeApp) {
   }
 }
 
-async function mountApp(app: RuntimeApp) {
+async function mountApp(app: App) {
   try {
-    await app.mount!();
+    await app.mount();
     app.status = AppStatus.MOUNTED;
   } catch (e) {
     console.error(e);
   }
 }
 
-async function unmountApp(app: RuntimeApp) {
+async function unmountApp(app: App) {
   try {
-    await app.unmount!();
+    await app.unmount();
     app.status = AppStatus.NOT_MOUNTED;
   } catch (e) {
     console.error(e);
@@ -114,7 +101,7 @@ async function unmountApp(app: RuntimeApp) {
 
 export async function updateApps() {
   const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
-  appsToUnmount.map((app) => unmountApp(app));
+  await appsToUnmount.map((app) => unmountApp(app));
   await Promise.all(appsToLoad.map((app) => loadApp(app)));
   await Promise.all(appsToMount.map((app) => mountApp(app)));
 }

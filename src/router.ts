@@ -1,6 +1,6 @@
 import { updateApps } from "./app";
 
-export class MicroRouter {
+export class Router {
   base: string;
 
   constructor(base?: string) {

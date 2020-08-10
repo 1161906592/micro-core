@@ -16,7 +16,7 @@ export default {
     resolve()
   ],
   output: {
-    file: "dist/bundle.js",
+    file: "example/bundle.js",
     format: "umd",
     name: "micro"
   }
