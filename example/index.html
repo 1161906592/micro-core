@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="author" content="liuyang">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>index</title>
+  <script src="bundle.js"></script>
+</head>
+<body>
+<div class="push">push</div>
+<div class="replace">replace</div>
+<div class="go">go</div>
+<div id="root"></div>
+<script>
+let a = 0;
+micro.register([
+  {
+    name: "a",
+    active: () => true,
+    entry: "./a.html"
+  },
+  {
+    name: "b",
+    active: () => true,
+    entry: "./b.html"
+  }
+]);
+// const microRouter = new micro.Router();
+// document.getElementsByClassName("push")[0].onclick = function () {
+//   a++;
+//   microRouter.push("sada?a=100");
+// };
+// document.getElementsByClassName("replace")[0].onclick = function () {
+//   a++;
+//   microRouter.replace("sada");
+// };
+// document.getElementsByClassName("go")[0].onclick = function () {
+//   a++;
+//   microRouter.go(-1);
+// };
+micro.updateApps();
+</script>
+</body>
+</html>
