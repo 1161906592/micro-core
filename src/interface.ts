@@ -24,3 +24,18 @@ export interface RemoteAppConfig {
 }
 
 export type ProxyType = Record<string, any>;
+
+export interface StoreAction {
+  type: string;
+}
+
+export type StoreReducer<S = any, A extends StoreAction = StoreAction> = (state: S | undefined, action: A) => S
+
+export type StoreReducersMapObject<S = any, A extends StoreAction = StoreAction> = {
+  [K in keyof S]: StoreReducer<S[K], A>
+}
+
+export type StoreStateFromReducersMapObject<M> = M extends StoreReducersMapObject ? { [P in keyof M]: M[P] extends StoreReducer<infer S, any> ? S : never } : never
+
+declare const $CombinedState: unique symbol;
+export type CombinedState<S> = { readonly [$CombinedState]?: undefined } & S
