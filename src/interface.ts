@@ -5,19 +5,21 @@ export interface AppLifecycle {
 }
 
 export interface RemoteAppLifecycle {
-  mount: (host?: HTMLDivElement) => Promise<void>;
-  unmount: () => Promise<void>;
+  mount: (host: HTMLDivElement) => Promise<void>;
+  unmount: (host: HTMLDivElement) => Promise<void>;
 }
 
 export interface AppConfig {
   name: string;
   active: () => boolean;
+  meta: ProxyType;
   loader: () => Promise<AppLifecycle>
 }
 
 export interface RemoteAppConfig {
   name: string;
   active: () => boolean;
+  meta: ProxyType;
   entry: string;
 }
 

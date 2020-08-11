@@ -31,7 +31,6 @@ export function registerApps(apps: AppConfig | AppConfig[]) {
     registeredApps.push(runtimeApp as App);
   });
 }
-
 function diffApps() {
   const appsToLoad: App[] = [];
   const appsToMount: App[] = [];

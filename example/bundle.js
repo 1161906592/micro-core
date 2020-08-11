@@ -254,26 +254,100 @@
   class Router {
       constructor(base) {
           this.base = normalizeBase(base);
-          window.addEventListener("popstate", function () {
-              updateApps();
+          this.current = "/";
+          this.beforeHooks = [];
+          this.listeners = [];
+          const handleRoutingEvent = () => {
+              this.transitionTo(getLocation(this.base));
+          };
+          window.addEventListener("popstate", handleRoutingEvent);
+          this.listeners.push(() => {
+              window.removeEventListener("popstate", handleRoutingEvent);
           });
       }
       push(url) {
-          if (this.getCurrentLocation() === url) {
-              return;
-          }
-          history.pushState(null, "", url);
-          updateApps();
+          this.transitionTo(url, () => {
+              pushState(cleanPath(this.base + url));
+          });
       }
       replace(url) {
-          history.replaceState(null, "", url);
-          updateApps();
+          this.transitionTo(url, () => {
+              pushState(cleanPath(this.base + url), true);
+          });
       }
       go(delta) {
           history.go(delta);
       }
+      back() {
+          this.go(-1);
+      }
+      beforeEach(fn) {
+          this.beforeHooks.push(fn);
+          return this;
+      }
+      destroy() {
+          this.listeners.forEach(cleanupListener => {
+              cleanupListener();
+          });
+          this.listeners = [];
+      }
+      ensureURL(push) {
+          if (this.getCurrentLocation() !== this.current) {
+              const current = cleanPath(this.base + this.current);
+              push ? pushState(current) : pushState(current, true);
+          }
+      }
       getCurrentLocation() {
           return getLocation(this.base);
+      }
+      transitionTo(url, cb) {
+          if (this.current === url) {
+              return;
+          }
+          runQueue(this.beforeHooks, (hook, next) => {
+              hook(url, this.current, (to) => {
+                  if (to === false) {
+                      this.ensureURL(true);
+                  }
+                  else if (typeof to === "string" || typeof to === "object") {
+                      if (typeof to === "object") {
+                          if (to.replace) {
+                              this.replace(to.path);
+                          }
+                          else {
+                              this.push(to.path);
+                          }
+                      }
+                      else {
+                          this.push(to);
+                      }
+                  }
+                  else {
+                      next();
+                  }
+              });
+          }, () => {
+              cb && cb();
+              this.commit(url);
+          });
+      }
+      commit(url) {
+          this.current = url;
+          updateApps();
+      }
+  }
+  function pushState(url, replace) {
+      const history = window.history;
+      try {
+          if (replace) {
+              history.replaceState("", "", url);
+          }
+          else {
+              history.pushState("", "", url);
+          }
+      }
+      catch (e) {
+          window.location[replace ? "replace" : "assign"](url);
       }
   }
   function normalizeBase(base) {
@@ -292,6 +366,27 @@
       }
       return (path || "/") + window.location.search + window.location.hash;
   }
+  function cleanPath(path) {
+      return path.replace(/\/\//g, "/");
+  }
+  function runQueue(queue, fn, cb) {
+      next(0);
+      function next(index) {
+          if (index >= queue.length) {
+              cb();
+          }
+          else {
+              if (queue[index]) {
+                  fn(queue[index], () => {
+                      next(index + 1);
+                  });
+              }
+              else {
+                  next(index + 1);
+              }
+          }
+      }
+  }
 
   function register(apps) {
       if (!Array.isArray(apps)) {
@@ -309,17 +404,19 @@
                           host = document.createElement("div");
                           host.id = "micro-" + app.name;
                           document.body.appendChild(host);
-                      },
-                      mount: async () => {
                           styleNodes.forEach((styleNode) => {
                               document.head.appendChild(styleNode);
                           });
-                          // host.appendChild(bodyNode);
-                          lifecycle.mount(host);
                       },
-                      unmount: lifecycle.unmount
+                      mount: async () => {
+                          await lifecycle.mount(host);
+                      },
+                      unmount: async () => {
+                          await lifecycle.unmount(host);
+                      }
                   };
-              }
+              },
+              meta: app.meta
           };
       }));
   }

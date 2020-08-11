@@ -7,7 +7,7 @@
   <title>aHTML</title>
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.11/vue.js"></script>
   <style>
-  #b {
+  #c {
     color: #f00;
     margin: 0;
     padding: 0;
@@ -16,13 +16,14 @@
 </head>
 <body>
 <script>
-window.b = {
+let vm;
+window.c = {
   mount: function (host) {
     const el = document.createElement("div");
     host.appendChild(el);
     vm = new Vue({
       el: el,
-      template: `<div id="b">b模块</div>`
+      template: `<div id="c">c模块</div>`
     });
   },
   unmount: function (host) {

@@ -5,8 +5,9 @@
   <meta name="author" content="liuyang">
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
   <title>aHTML</title>
+  <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.11/vue.js"></script>
   <style>
-  div {
+  #a {
     color: #f00;
     margin: 0;
     padding: 0;
@@ -14,17 +15,21 @@
   </style>
 </head>
 <body>
-<div>dasdsa</div>
 <script>
+let vm;
 window.a = {
-  mount: function (el) {
-    console.log(111, el);
-    console.log(document.querySelectorAll("div"));
-    const div = document.createElement("div");
-    div.innerHTML = "a inner html";
-    el.appendChild(div);
+  mount: function (host) {
+    const el = document.createElement("div");
+    host.appendChild(el);
+    vm = new Vue({
+      el: el,
+      template: `<div id="a">a模块</div>`
+    });
   },
-  unmount: function () {
+  unmount: function (host) {
+    vm.$destroy();
+    host.innerHTML = "";
+    delete vm.instance;
   }
 };
 </script>

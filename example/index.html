@@ -8,38 +8,61 @@
   <script src="bundle.js"></script>
 </head>
 <body>
-<div class="push">push</div>
-<div class="replace">replace</div>
-<div class="go">go</div>
+<div class="a">a</div>
+<div class="b">b</div>
+<div class="c">c</div>
 <div id="root"></div>
 <script>
-let a = 0;
 micro.register([
   {
     name: "a",
-    active: () => true,
-    entry: "./a.html"
+    active: () => location.pathname.startsWith("/micro-core/example/a"),
+    entry: "/micro-core/example/a.html",
+    meta: {
+      path: "a"
+    }
   },
   {
     name: "b",
-    active: () => true,
-    entry: "./b.html"
+    active: () => location.pathname.startsWith("/micro-core/example/b"),
+    entry: "/micro-core/example/b.html",
+    meta: {
+      path: "b"
+    }
+  },
+  {
+    name: "c",
+    active: () => location.pathname.startsWith("/micro-core/example/c"),
+    entry: "/micro-core/example/c.html",
+    meta: {
+      path: "c"
+    }
   }
 ]);
-// const microRouter = new micro.Router();
-// document.getElementsByClassName("push")[0].onclick = function () {
-//   a++;
-//   microRouter.push("sada?a=100");
-// };
-// document.getElementsByClassName("replace")[0].onclick = function () {
-//   a++;
-//   microRouter.replace("sada");
-// };
-// document.getElementsByClassName("go")[0].onclick = function () {
-//   a++;
-//   microRouter.go(-1);
-// };
 micro.updateApps();
+const microRouter = new micro.Router("/micro-core/example/");
+microRouter.beforeEach((to, from, next) => {
+  if (to !== "/a") {
+    next();
+  } else {
+    next({
+      path: "/b"
+    });
+  }
+})
+.beforeEach((to, from, next) => {
+  console.log(2);
+  next();
+});
+document.getElementsByClassName("a")[0].onclick = function () {
+  microRouter.push("/a");
+};
+document.getElementsByClassName("b")[0].onclick = function () {
+  microRouter.push("/b");
+};
+document.getElementsByClassName("c")[0].onclick = function () {
+  microRouter.replace("/c");
+};
 </script>
 </body>
 </html>

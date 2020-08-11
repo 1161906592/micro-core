@@ -25,11 +25,14 @@ export function register(apps: RemoteAppConfig | RemoteAppConfig[]) {
             });
           },
           mount: async () => {
-            lifecycle.mount(host);
+            await lifecycle.mount(host);
           },
-          unmount: lifecycle.unmount
+          unmount: async () => {
+            await lifecycle.unmount(host);
+          }
         };
-      }
+      },
+      meta: app.meta
     };
   }));
 }
