@@ -1,4 +1,5 @@
 import { Router } from "./interface";
+import { runQueue } from "./utils";
 
 export function createRouter(base?: string): Router {
   let basePath = normalizeBase(base);
@@ -142,22 +143,4 @@ function getLocation(base: string): string {
 // /a//b/c -> /a/b/c
 function cleanPath(path: string): string {
   return path.replace(/\/\//g, "/");
-}
-
-function runQueue(queue: Function[], fn: Function, cb?: Function) {
-  next(0);
-
-  function next(index: number) {
-    if (index >= queue.length) {
-      cb && cb();
-    } else {
-      if (queue[index]) {
-        fn(queue[index], () => {
-          next(index + 1);
-        });
-      } else {
-        next(index + 1);
-      }
-    }
-  }
 }

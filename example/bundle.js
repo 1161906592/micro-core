@@ -144,77 +144,116 @@
       }
   }
 
-  const URL_REGEX = "(?:(https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
-  const MATCH_ANY_OR_NO_PROPERTY = /["'=\w\s\/]*/;
-  const SCRIPT_URL_RE = new RegExp("<\\s*script" +
-      MATCH_ANY_OR_NO_PROPERTY.source +
-      "(?:src=\"(.+?)\")" +
-      MATCH_ANY_OR_NO_PROPERTY.source +
-      "(?:\\/>|>[\\s]*<\\s*\\/script>)?", "g");
-  const SCRIPT_CONTENT_RE = new RegExp("<\\s*script" +
-      MATCH_ANY_OR_NO_PROPERTY.source +
-      ">([\\w\\W]+?)<\\s*\\/script>", "g");
-  const CSS_URL_STYLE_RE = new RegExp(`<\\s*link[^>]*href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<\\s*style\\s*>([^<]*)<\\s*/style>`, "g");
+  function runQueue(queue, fn, cb) {
+      next(0);
+      function next(index) {
+          if (index >= queue.length) {
+              cb && cb();
+          }
+          else {
+              if (queue[index]) {
+                  fn(queue[index], () => {
+                      next(index + 1);
+                  });
+              }
+              else {
+                  next(index + 1);
+              }
+          }
+      }
+  }
+
+  const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
+  const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
+  const SCRIPT_URL_REGEX = `<script[^>]+src=["']?(${URL_REGEX}*)["']?[^>]*></script\\s*>`;
+  const SCRIPT_URL_RE = new RegExp(SCRIPT_URL_REGEX, "g");
+  const SCRIPT_URL_CONTENT_RE = new RegExp(`${SCRIPT_URL_REGEX}|<script\\s*>([\\w\\W]+?)</script\\s*>`, "g");
   const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
   const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
-  const TEST_URL = /^(?:https?):\/\/[-a-zA-Z0-9.]+/;
   const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
   async function importHtml(app) {
       const template = await request(app.entry);
-      const cssResult = await parseCSS(template);
+      const [lifecycle] = await Promise.all([loadScript(template, window, app.name), loadCSS(template)]);
       const bodyHTML = loadBody(template);
-      const lifecycle = await loadScript(template, window, app.name);
-      return { lifecycle, cssResult, bodyHTML };
+      return { lifecycle, bodyHTML };
   }
   async function loadScript(template, global, name) {
-      const { scriptURLs, scripts } = parseScript(template);
-      const fetchedScripts = await Promise.all(scriptURLs.map((url) => request(url)));
-      const scriptsToLoad = fetchedScripts.concat(scripts);
-      let lifecycle;
-      scriptsToLoad.forEach((script) => {
-          lifecycle = runScript(script, global, name);
+      return new Promise(resolve => {
+          const result = parseScript(template);
+          runQueue(result.map((item) => {
+              switch (item.type) {
+                  case "script":
+                      return runScript.bind(void 0, item.value, global);
+                  case "scriptURL":
+                      return loadScriptURL.bind(void 0, item.value);
+              }
+          }), async (loader, next) => {
+              await loader();
+              next();
+          }, () => {
+              resolve(global[name]);
+          });
       });
-      if (!lifecycle) {
-          throw new Error(`找不到 ${name} 的应用入口`);
-      }
-      return lifecycle;
   }
   function parseScript(template) {
-      const scriptURLs = [];
-      const scripts = [];
-      SCRIPT_URL_RE.lastIndex = SCRIPT_CONTENT_RE.lastIndex = 0;
+      const result = [];
+      SCRIPT_URL_CONTENT_RE.lastIndex = 0;
       let match;
-      while ((match = SCRIPT_URL_RE.exec(template))) {
-          let captured = match[1].trim();
-          if (!captured)
-              continue;
-          if (!TEST_URL.test(captured)) {
-              captured = window.location.origin + captured;
-          }
-          scriptURLs.push(captured);
+      while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
+          let [, scriptURL, script] = match;
+          scriptURL = (scriptURL || "").trim();
+          script = (script || "").trim();
+          scriptURL && result.push({
+              type: "scriptURL",
+              value: scriptURL
+          });
+          script && result.push({
+              type: "script",
+              value: script
+          });
       }
-      while ((match = SCRIPT_CONTENT_RE.exec(template))) {
-          const captured = match[1].trim();
-          if (!captured)
-              continue;
-          scripts.push(captured);
-      }
-      return {
-          scriptURLs,
-          scripts
-      };
+      return result;
   }
-  function runScript(script, global, umdName) {
+  function runScript(script, global) {
       const resolver = new Function("window", `
     try {
       ${script}
-      return window['${umdName}']
     }
     catch(e) {
       console.log(e)
     }
   `);
       return resolver.call(global, global);
+  }
+  const loadedScript = {};
+  async function loadScriptURL(scriptURL) {
+      return new Promise((resolve, reject) => {
+          if (loadedScript[scriptURL]) {
+              return resolve();
+          }
+          const scriptNode = document.createElement("script");
+          scriptNode.onload = () => {
+              loadedScript[scriptURL] = 1;
+              resolve();
+          };
+          scriptNode.onerror = reject;
+          scriptNode.src = scriptURL;
+          document.head.appendChild(scriptNode);
+      }).catch((e) => {
+          console.error(`script: ${scriptURL} 加载失败`, e);
+      });
+  }
+  async function loadCSS(template) {
+      const cssResult = parseCSS(template);
+      // 加载样式
+      await Promise.all(cssResult.map((item) => {
+          switch (item.type) {
+              case "style":
+                  return loadStyle(item.value);
+              case "cssURL":
+                  return loadCSSURL(item.value);
+          }
+      }));
   }
   // 按顺序解析行内css和外链css
   function parseCSS(template) {
@@ -225,6 +264,7 @@
           let [, cssURL, style] = match;
           cssURL = (cssURL || "").trim();
           style = (style || "").trim();
+          // todo 替换相对路径
           cssURL && result.push({
               type: "cssURL",
               value: cssURL
@@ -416,24 +456,6 @@
   function cleanPath(path) {
       return path.replace(/\/\//g, "/");
   }
-  function runQueue(queue, fn, cb) {
-      next(0);
-      function next(index) {
-          if (index >= queue.length) {
-              cb && cb();
-          }
-          else {
-              if (queue[index]) {
-                  fn(queue[index], () => {
-                      next(index + 1);
-                  });
-              }
-              else {
-                  next(index + 1);
-              }
-          }
-      }
-  }
 
   function randomString() {
       return Math.random().toString(36).substring(7).split("").join(".");
@@ -546,19 +568,10 @@
                   name: app.name,
                   active: app.active,
                   loader: async () => {
-                      const { lifecycle, bodyHTML, cssResult } = await importHtml(app);
+                      const { lifecycle, bodyHTML } = await importHtml(app);
                       let host;
                       return {
                           bootstrap: async (addReducers) => {
-                              // 加载样式
-                              await Promise.all(cssResult.map((item) => {
-                                  switch (item.type) {
-                                      case "style":
-                                          return loadStyle(item.value);
-                                      case "cssURL":
-                                          return loadCSSURL(item.value);
-                                  }
-                              }));
                               host = document.createElement("div");
                               host.id = "micro-" + app.name;
                               host.innerHTML = bodyHTML;

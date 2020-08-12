@@ -1,16 +1,17 @@
-export function request(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState === 4) {
-        if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
-          resolve(xhr.responseText);
-        } else {
-          reject(xhr);
-        }
+export function runQueue(queue: Function[], fn: Function, cb?: Function) {
+  next(0);
+
+  function next(index: number) {
+    if (index >= queue.length) {
+      cb && cb();
+    } else {
+      if (queue[index]) {
+        fn(queue[index], () => {
+          next(index + 1);
+        });
+      } else {
+        next(index + 1);
       }
-    };
-    xhr.open("get", url);
-    xhr.send();
-  });
+    }
+  }
 }
