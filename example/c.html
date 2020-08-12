@@ -7,14 +7,25 @@
   <title>aHTML</title>
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.11/vue.js"></script>
   <style>
-  #c {
-    color: #f00;
-    margin: 0;
-    padding: 0;
+  * {
+    margin: 0;padding: 0;
+  }
+  </style>
+  <style>
+  * {
+    margin: 0;padding: 0;
+  }
+  </style>
+  <link rel="stylesheet" href="c.css" a />
+  <style>
+  * {
+    margin: 0;padding: 0;
   }
   </style>
 </head>
 <body>
+<div>cccc</div>
+<div class="root"></div>
 <script>
 let vm;
 window.c = {
@@ -28,15 +39,14 @@ window.c = {
       }
     }
 
-    addReducers({
-      cStore: cStore
-    });
+    // addReducers({
+    //   cStore: cStore
+    // });
   },
   mount: function (host, store) {
-    const el = document.createElement("div");
-    host.appendChild(el);
+    console.log(store.getState());
     vm = new Vue({
-      el: el,
+      el: host.querySelector(".root"),
       data: {
         name: (store.getState().bStore || {}).name
       },
@@ -53,8 +63,7 @@ window.c = {
   },
   unmount: function (host) {
     vm.$destroy();
-    host.innerHTML = "";
-    delete vm.instance;
+    vm.$el = null;
   }
 };
 </script>

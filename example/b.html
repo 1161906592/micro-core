@@ -32,6 +32,7 @@ window.b = {
     });
   },
   mount: async function (host, store) {
+    console.log(store.getState());
     const el = document.createElement("div");
     host.appendChild(el);
     vm = new Vue({

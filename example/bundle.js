@@ -144,24 +144,7 @@
       }
   }
 
-  function request(url) {
-      return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onreadystatechange = () => {
-              if (xhr.readyState === 4) {
-                  if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
-                      resolve(xhr.responseText);
-                  }
-                  else {
-                      reject(xhr);
-                  }
-              }
-          };
-          xhr.open("get", url);
-          xhr.send();
-      });
-  }
-
+  const URL_REGEX = "(?:(https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
   const MATCH_ANY_OR_NO_PROPERTY = /["'=\w\s\/]*/;
   const SCRIPT_URL_RE = new RegExp("<\\s*script" +
       MATCH_ANY_OR_NO_PROPERTY.source +
@@ -171,26 +154,17 @@
   const SCRIPT_CONTENT_RE = new RegExp("<\\s*script" +
       MATCH_ANY_OR_NO_PROPERTY.source +
       ">([\\w\\W]+?)<\\s*\\/script>", "g");
-  const MATCH_NONE_QUOTE_MARK = /[^"]/;
-  const CSS_URL_RE = new RegExp("<\\s*link[^>]*" +
-      "href=\"(" +
-      MATCH_NONE_QUOTE_MARK.source +
-      "+.css" +
-      MATCH_NONE_QUOTE_MARK.source +
-      "*)\"" +
-      MATCH_ANY_OR_NO_PROPERTY.source +
-      ">(?:\\s*<\\s*\\/link>)?", "g");
-  const STYLE_RE = /<\s*style\s*>([^<]*)<\s*\/style>/g;
+  const CSS_URL_STYLE_RE = new RegExp(`<\\s*link[^>]*href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<\\s*style\\s*>([^<]*)<\\s*/style>`, "g");
   const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
   const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
   const TEST_URL = /^(?:https?):\/\/[-a-zA-Z0-9.]+/;
-  const REPLACED_BY_BERIAL = "Script replaced by Berial.";
+  const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
   async function importHtml(app) {
       const template = await request(app.entry);
-      const styleNodes = await loadCSS(template);
-      const bodyNode = loadBody(template);
+      const cssResult = await parseCSS(template);
+      const bodyHTML = loadBody(template);
       const lifecycle = await loadScript(template, window, app.name);
-      return { lifecycle, styleNodes, bodyNode };
+      return { lifecycle, cssResult, bodyHTML };
   }
   async function loadScript(template, global, name) {
       const { scriptURLs, scripts } = parseScript(template);
@@ -242,49 +216,47 @@
   `);
       return resolver.call(global, global);
   }
-  async function loadCSS(template) {
-      const { cssURLs, styles } = parseCSS(template);
-      const fetchedStyles = await Promise.all(cssURLs.map((url) => request(url)));
-      return toStyleNodes(fetchedStyles.concat(styles));
-      function toStyleNodes(styles) {
-          return styles.map((style) => {
-              const styleNode = document.createElement("style");
-              styleNode.appendChild(document.createTextNode(style));
-              return styleNode;
+  // 按顺序解析行内css和外链css
+  function parseCSS(template) {
+      const result = [];
+      CSS_URL_STYLE_RE.lastIndex = 0;
+      let match;
+      while ((match = CSS_URL_STYLE_RE.exec(template))) {
+          let [, cssURL, style] = match;
+          cssURL = (cssURL || "").trim();
+          style = (style || "").trim();
+          cssURL && result.push({
+              type: "cssURL",
+              value: cssURL
+          });
+          style && result.push({
+              type: "style",
+              value: style
           });
       }
+      return result;
   }
-  function parseCSS(template) {
-      const cssURLs = [];
-      const styles = [];
-      CSS_URL_RE.lastIndex = STYLE_RE.lastIndex = 0;
-      let match;
-      while ((match = CSS_URL_RE.exec(template))) {
-          let captured = match[1].trim();
-          if (!captured)
-              continue;
-          if (!TEST_URL.test(captured)) {
-              captured = window.location.origin + captured;
-          }
-          cssURLs.push(captured);
-      }
-      while ((match = STYLE_RE.exec(template))) {
-          const captured = match[1].trim();
-          if (!captured)
-              continue;
-          styles.push(captured);
-      }
-      return {
-          cssURLs,
-          styles
-      };
+  async function loadCSSURL(cssURL) {
+      return new Promise((resolve, reject) => {
+          const linkNode = document.createElement("link");
+          linkNode.rel = "stylesheet";
+          linkNode.onload = resolve;
+          linkNode.onerror = reject;
+          linkNode.href = cssURL;
+          document.head.appendChild(linkNode);
+      }).catch((e) => {
+          console.error(`css: ${cssURL} 加载失败`, e);
+      });
+  }
+  function loadStyle(style) {
+      const styleNode = document.createElement("style");
+      styleNode.appendChild(document.createTextNode(style));
+      document.head.appendChild(styleNode);
   }
   function loadBody(template) {
-      let bodyContent = template.match(BODY_CONTENT_RE)?.[1] ?? "";
-      bodyContent = bodyContent.replace(SCRIPT_ANY_RE, scriptReplacer);
-      const body = document.createElement("div");
-      body.innerHTML = bodyContent;
-      return body;
+      let bodyHTML = template.match(BODY_CONTENT_RE)?.[1] ?? "";
+      bodyHTML = bodyHTML.replace(SCRIPT_ANY_RE, scriptReplacer);
+      return bodyHTML;
       function scriptReplacer(substring) {
           const matchedURL = SCRIPT_URL_RE.exec(substring);
           if (matchedURL) {
@@ -292,6 +264,23 @@
           }
           return `<!-- ${REPLACED_BY_BERIAL} Original script: inline script -->`;
       }
+  }
+  function request(url) {
+      return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onreadystatechange = () => {
+              if (xhr.readyState === 4) {
+                  if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
+                      resolve(xhr.responseText);
+                  }
+                  else {
+                      reject(xhr);
+                  }
+              }
+          };
+          xhr.open("get", url);
+          xhr.send();
+      });
   }
 
   function createRouter(base) {
@@ -557,23 +546,32 @@
                   name: app.name,
                   active: app.active,
                   loader: async () => {
-                      const { lifecycle, styleNodes } = await importHtml(app);
+                      const { lifecycle, bodyHTML, cssResult } = await importHtml(app);
                       let host;
                       return {
                           bootstrap: async (addReducers) => {
+                              // 加载样式
+                              await Promise.all(cssResult.map((item) => {
+                                  switch (item.type) {
+                                      case "style":
+                                          return loadStyle(item.value);
+                                      case "cssURL":
+                                          return loadCSSURL(item.value);
+                                  }
+                              }));
                               host = document.createElement("div");
                               host.id = "micro-" + app.name;
+                              host.innerHTML = bodyHTML;
                               document.body.appendChild(host);
-                              styleNodes.forEach((styleNode) => {
-                                  document.head.appendChild(styleNode);
-                              });
                               await lifecycle.bootstrap(addReducers);
                           },
                           mount: async (store) => {
+                              host.innerHTML = bodyHTML;
                               await lifecycle.mount(host, store);
                           },
                           unmount: async (store) => {
                               await lifecycle.unmount(host, store);
+                              host.innerHTML = "";
                           }
                       };
                   },
