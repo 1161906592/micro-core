@@ -18,7 +18,10 @@
 <script>
 let vm;
 window.a = {
-  mount: function (host) {
+  bootstrap: function (addReducers) {
+    console.log(addReducers);
+  },
+  mount: function (host, store) {
     const el = document.createElement("div");
     host.appendChild(el);
     vm = new Vue({

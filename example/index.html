@@ -13,7 +13,26 @@
 <div class="c">c</div>
 <div id="root"></div>
 <script>
-micro.register([
+
+const router = micro.createRouter("/micro-core/example/");
+
+router.beforeEach((to, from, next) => {
+  if (to !== "/a") {
+    next();
+  } else {
+    next({
+      path: "/b"
+    });
+  }
+});
+
+const store = micro.createSyncStore({});
+
+const app = micro.createRemoteApp({
+  store,
+  router
+});
+app.register([
   {
     name: "a",
     active: () => location.pathname.startsWith("/micro-core/example/a"),
@@ -24,7 +43,9 @@ micro.register([
   },
   {
     name: "b",
-    active: () => location.pathname.startsWith("/micro-core/example/b"),
+    active: () => {
+      return location.pathname.startsWith("/micro-core/example/b");
+    },
     entry: "/micro-core/example/b.html",
     meta: {
       path: "b"
@@ -39,29 +60,16 @@ micro.register([
     }
   }
 ]);
-micro.updateApps();
-const microRouter = new micro.Router("/micro-core/example/");
-microRouter.beforeEach((to, from, next) => {
-  if (to !== "/a") {
-    next();
-  } else {
-    next({
-      path: "/b"
-    });
-  }
-})
-.beforeEach((to, from, next) => {
-  console.log(2);
-  next();
-});
+app.update();
+
 document.getElementsByClassName("a")[0].onclick = function () {
-  microRouter.push("/a");
+  router.push("/a");
 };
 document.getElementsByClassName("b")[0].onclick = function () {
-  microRouter.push("/b");
+  router.push("/b");
 };
 document.getElementsByClassName("c")[0].onclick = function () {
-  microRouter.replace("/c");
+  router.push("/c");
 };
 </script>
 </body>

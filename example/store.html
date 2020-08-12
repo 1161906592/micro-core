@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="author" content="liuyang">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>store</title>
+  <script src="bundle.js"></script>
+</head>
+<body>
+<script>
+function action1 (state, action) {
+  switch (action.type) {
+    case "ADD":
+      return { ...state, name: action.name };
+    default:
+      return { name: 1 };
+  }
+}
+
+function action2 (state, action) {
+  switch (action.type) {
+    case "ADD":
+      return { ...state, name: action.name };
+    default:
+      return { name: 2 };
+  }
+}
+
+const { store, addReducers } = micro.createSyncStore({});
+console.log(store.getState());
+addReducers({
+  action2
+});
+console.log(store.getState());
+// store.subscribe(() => {
+//   console.log(store.getState());
+// });
+// store.dispatch({
+//   type: "ADD",
+//   name: "add1"
+// });
+// store.dispatch({
+//   type: "ADD",
+//   name: "add2"
+// });
+</script>
+</body>
+</html>

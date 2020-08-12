@@ -7,53 +7,77 @@
   var AppStatus;
   (function (AppStatus) {
       AppStatus[AppStatus["NOT_LOAD"] = 0] = "NOT_LOAD";
-      AppStatus[AppStatus["NOT_MOUNTED"] = 1] = "NOT_MOUNTED";
-      AppStatus[AppStatus["MOUNTED"] = 2] = "MOUNTED";
+      AppStatus[AppStatus["LOADING"] = 1] = "LOADING";
+      AppStatus[AppStatus["NOT_BOOTSTRAPPED"] = 2] = "NOT_BOOTSTRAPPED";
+      AppStatus[AppStatus["BOOTSTRAPPING"] = 3] = "BOOTSTRAPPING";
+      AppStatus[AppStatus["NOT_MOUNTED"] = 4] = "NOT_MOUNTED";
+      AppStatus[AppStatus["MOUNTING"] = 5] = "MOUNTING";
+      AppStatus[AppStatus["MOUNTED"] = 6] = "MOUNTED";
+      AppStatus[AppStatus["UN_MOUNTING"] = 7] = "UN_MOUNTING";
   })(AppStatus || (AppStatus = {}));
-  const registeredApps = [];
-  function registerApps(apps) {
-      if (!Array.isArray(apps)) {
-          apps = [apps];
-      }
-      apps.forEach((app) => {
-          {
-              if (registeredApps.find(d => d.name === app.name)) {
-                  console.error(`存在与 ${app.name} 同名的应用已经被注册`);
+  function createApp(option = {}) {
+      const registeredApps = [];
+      function register(apps) {
+          if (!Array.isArray(apps)) {
+              apps = [apps];
+          }
+          apps.forEach((app) => {
+              {
+                  if (registeredApps.find(d => d.name === app.name)) {
+                      console.error(`存在与 ${app.name} 同名的应用已经被注册`);
+                  }
               }
-          }
-          const runtimeApp = {
-              ...app,
-              status: AppStatus.NOT_LOAD
-          };
-          registeredApps.push(runtimeApp);
-      });
-  }
-  function diffApps() {
-      const appsToLoad = [];
-      const appsToMount = [];
-      const appsToUnmount = [];
-      registeredApps.forEach((app) => {
-          const isActive = shouldActive(app);
-          switch (app.status) {
-              case AppStatus.NOT_LOAD:
-                  if (isActive) {
-                      appsToLoad.push(app);
-                      appsToMount.push(app);
-                  }
-                  break;
-              case AppStatus.NOT_MOUNTED:
-                  if (isActive) {
-                      appsToMount.push(app);
-                  }
-                  break;
-              case AppStatus.MOUNTED:
-                  if (!isActive) {
-                      appsToUnmount.push(app);
-                  }
-                  break;
-          }
-      });
-      return { appsToLoad, appsToMount, appsToUnmount };
+              const runtimeApp = {
+                  ...app,
+                  status: AppStatus.NOT_LOAD
+              };
+              registeredApps.push(runtimeApp);
+          });
+      }
+      async function update() {
+          const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
+          await Promise.all(appsToUnmount.map(async (app) => {
+              return unmountApp(app, option.store && option.store.store);
+          }));
+          appsToLoad.forEach(async (app) => {
+              await loadApp(app);
+              await bootStrapApp(app, option.store);
+              await mountApp(app, option.store && option.store.store);
+          });
+          appsToMount.forEach(async (app) => {
+              await mountApp(app, option.store && option.store.store);
+          });
+      }
+      function diffApps() {
+          const appsToLoad = [];
+          const appsToMount = [];
+          const appsToUnmount = [];
+          registeredApps.forEach((app) => {
+              const isActive = shouldActive(app);
+              switch (app.status) {
+                  case AppStatus.NOT_LOAD:
+                      isActive && appsToLoad.push(app);
+                      break;
+                  case AppStatus.NOT_MOUNTED:
+                      isActive && appsToMount.push(app);
+                      break;
+                  case AppStatus.MOUNTED:
+                      !isActive && appsToUnmount.push(app);
+                      break;
+              }
+          });
+          return { appsToLoad, appsToMount, appsToUnmount };
+      }
+      if (option.router) {
+          option.router.afterEach((current, next) => {
+              update();
+              next();
+          });
+      }
+      return {
+          register: register,
+          update: update
+      };
   }
   function shouldActive(app) {
       try {
@@ -66,39 +90,58 @@
   }
   async function loadApp(app) {
       try {
+          app.status = AppStatus.LOADING;
           const { bootstrap, mount, unmount } = await app.loader();
           app.bootstrap = bootstrap;
           app.mount = mount;
           app.unmount = unmount;
-          await bootstrap();
+          app.status = AppStatus.NOT_BOOTSTRAPPED;
       }
       catch (e) {
-          console.error(e);
+          console.error(`${app.name} 加载失败。`, e);
       }
   }
-  async function mountApp(app) {
-      try {
-          await app.mount();
-          app.status = AppStatus.MOUNTED;
+  async function bootStrapApp(app, syncStore) {
+      if (app.status !== AppStatus.NOT_BOOTSTRAPPED) {
+          return;
       }
-      catch (e) {
-          console.error(e);
-      }
-  }
-  async function unmountApp(app) {
       try {
-          await app.unmount();
+          app.status = AppStatus.BOOTSTRAPPING;
+          await app.bootstrap(syncStore && syncStore.addReducers);
           app.status = AppStatus.NOT_MOUNTED;
       }
       catch (e) {
-          console.error(e);
+          console.error(`${app.name} 初始化失败。`, e);
       }
   }
-  async function updateApps() {
-      const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
-      await appsToUnmount.map((app) => unmountApp(app));
-      await Promise.all(appsToLoad.map((app) => loadApp(app)));
-      await Promise.all(appsToMount.map((app) => mountApp(app)));
+  async function mountApp(app, store) {
+      if (app.status !== AppStatus.NOT_MOUNTED || !app.active()) {
+          return;
+      }
+      try {
+          app.status = AppStatus.MOUNTING;
+          await app.mount(store);
+          app.status = AppStatus.MOUNTED;
+          if (!app.active()) {
+              await unmountApp(app, store);
+          }
+      }
+      catch (e) {
+          console.error(`${app.name} 挂载失败。`, e);
+      }
+  }
+  async function unmountApp(app, store) {
+      if (app.status !== AppStatus.MOUNTED || app.active()) {
+          return;
+      }
+      try {
+          app.status = AppStatus.UN_MOUNTING;
+          await app.unmount(store);
+          app.status = AppStatus.NOT_MOUNTED;
+      }
+      catch (e) {
+          console.error(`${app.name} 卸载失败。`, e);
+      }
   }
 
   function request(url) {
@@ -251,75 +294,73 @@
       }
   }
 
-  class Router {
-      constructor(base) {
-          this.base = normalizeBase(base);
-          this.current = "/";
-          this.beforeHooks = [];
-          this.listeners = [];
-          const handleRoutingEvent = () => {
-              this.transitionTo(getLocation(this.base));
-          };
-          window.addEventListener("popstate", handleRoutingEvent);
-          this.listeners.push(() => {
-              window.removeEventListener("popstate", handleRoutingEvent);
+  function createRouter(base) {
+      let basePath = normalizeBase(base);
+      let current = "/";
+      let beforeHooks = [];
+      let afterHooks = [];
+      let listeners = [];
+      window.addEventListener("popstate", handleRoutingEvent);
+      listeners.push(() => {
+          window.removeEventListener("popstate", handleRoutingEvent);
+      });
+      function handleRoutingEvent() {
+          transitionTo(getLocation(basePath));
+      }
+      function push(url) {
+          transitionTo(url, () => {
+              pushState(cleanPath(basePath + url));
           });
       }
-      push(url) {
-          this.transitionTo(url, () => {
-              pushState(cleanPath(this.base + url));
+      function replace(url) {
+          transitionTo(url, () => {
+              pushState(cleanPath(basePath + url), true);
           });
       }
-      replace(url) {
-          this.transitionTo(url, () => {
-              pushState(cleanPath(this.base + url), true);
-          });
-      }
-      go(delta) {
+      function go(delta) {
           history.go(delta);
       }
-      back() {
-          this.go(-1);
+      function back() {
+          go(-1);
       }
-      beforeEach(fn) {
-          this.beforeHooks.push(fn);
-          return this;
+      function beforeEach(fn) {
+          beforeHooks.push(fn);
       }
-      destroy() {
-          this.listeners.forEach(cleanupListener => {
+      function afterEach(fn) {
+          afterHooks.push(fn);
+      }
+      function destroy() {
+          listeners.forEach(cleanupListener => {
               cleanupListener();
           });
-          this.listeners = [];
+          listeners = [];
       }
-      ensureURL(push) {
-          if (this.getCurrentLocation() !== this.current) {
-              const current = cleanPath(this.base + this.current);
-              push ? pushState(current) : pushState(current, true);
+      function ensureURL(push) {
+          if (getLocation(basePath) !== current) {
+              const cur = cleanPath(base + current);
+              push ? pushState(cur) : pushState(cur, true);
           }
       }
-      getCurrentLocation() {
-          return getLocation(this.base);
-      }
-      transitionTo(url, cb) {
-          if (this.current === url) {
+      function transitionTo(url, cb) {
+          if (current === url) {
               return;
           }
-          runQueue(this.beforeHooks, (hook, next) => {
-              hook(url, this.current, (to) => {
+          runQueue(beforeHooks, (hook, next) => {
+              hook(url, current, (to) => {
                   if (to === false) {
-                      this.ensureURL(true);
+                      ensureURL(true);
                   }
                   else if (typeof to === "string" || typeof to === "object") {
                       if (typeof to === "object") {
                           if (to.replace) {
-                              this.replace(to.path);
+                              replace(to.path);
                           }
                           else {
-                              this.push(to.path);
+                              push(to.path);
                           }
                       }
                       else {
-                          this.push(to);
+                          push(to);
                       }
                   }
                   else {
@@ -327,14 +368,30 @@
                   }
               });
           }, () => {
+              current = url;
               cb && cb();
-              this.commit(url);
+              runQueue(afterHooks, (hook, next) => {
+                  hook(current, () => {
+                      next();
+                  });
+              });
           });
       }
-      commit(url) {
-          this.current = url;
-          updateApps();
-      }
+      return {
+          push: push,
+          replace: replace,
+          go: go,
+          back: back,
+          beforeEach(fn) {
+              beforeEach(fn);
+              return this;
+          },
+          afterEach(fn) {
+              afterEach(fn);
+              return this;
+          },
+          destroy: destroy
+      };
   }
   function pushState(url, replace) {
       const history = window.history;
@@ -366,6 +423,7 @@
       }
       return (path || "/") + window.location.search + window.location.hash;
   }
+  // /a//b/c -> /a/b/c
   function cleanPath(path) {
       return path.replace(/\/\//g, "/");
   }
@@ -373,7 +431,7 @@
       next(0);
       function next(index) {
           if (index >= queue.length) {
-              cb();
+              cb && cb();
           }
           else {
               if (queue[index]) {
@@ -388,44 +446,154 @@
       }
   }
 
-  function register(apps) {
-      if (!Array.isArray(apps)) {
-          apps = [apps];
+  function randomString() {
+      return Math.random().toString(36).substring(7).split("").join(".");
+  }
+  const ActionTypes = {
+      INIT: "@@store/INIT" + randomString(),
+      REPLACE: "@@store/REPLACE" + randomString()
+  };
+  function createStore(reducer, preloadedState) {
+      let currentReducer = reducer;
+      let currentState = preloadedState;
+      let currentListeners = [];
+      let nextListeners = currentListeners;
+      function ensureCanMutateNextListeners() {
+          if (nextListeners === currentListeners) {
+              nextListeners = currentListeners.slice();
+          }
       }
-      registerApps(apps.map((app) => {
-          return {
-              name: app.name,
-              active: app.active,
-              loader: async () => {
-                  const { lifecycle, styleNodes } = await importHtml(app);
-                  let host;
-                  return {
-                      bootstrap: async () => {
-                          host = document.createElement("div");
-                          host.id = "micro-" + app.name;
-                          document.body.appendChild(host);
-                          styleNodes.forEach((styleNode) => {
-                              document.head.appendChild(styleNode);
-                          });
-                      },
-                      mount: async () => {
-                          await lifecycle.mount(host);
-                      },
-                      unmount: async () => {
-                          await lifecycle.unmount(host);
-                      }
-                  };
-              },
-              meta: app.meta
+      function getState() {
+          return currentState;
+      }
+      function subscribe(listener) {
+          let isSubscribed = true;
+          ensureCanMutateNextListeners();
+          nextListeners.push(listener);
+          return function unsubscribe() {
+              if (!isSubscribed) {
+                  return;
+              }
+              isSubscribed = false;
+              ensureCanMutateNextListeners();
+              let index = nextListeners.indexOf(listener);
+              nextListeners.splice(index, 1);
+              currentListeners = null;
           };
-      }));
+      }
+      function dispatch(action) {
+          currentState = currentReducer(currentState, action);
+          let listeners = currentListeners = nextListeners;
+          for (let i = 0; i < listeners.length; i++) {
+              let listener = listeners[i];
+              listener();
+          }
+          return action;
+      }
+      function replaceReducer(nextReducer) {
+          currentReducer = nextReducer;
+          dispatch({
+              type: ActionTypes.REPLACE
+          });
+      }
+      dispatch({
+          type: ActionTypes.INIT
+      });
+      return {
+          dispatch: dispatch,
+          subscribe: subscribe,
+          getState: getState,
+          replaceReducer: replaceReducer
+      };
+  }
+  function combineReducers(reducers) {
+      let reducerKeys = Object.keys(reducers);
+      return function combination(state = {}, action) {
+          if (state === void 0) {
+              state = {};
+          }
+          let hasChanged = false;
+          let nextState = {};
+          for (let _i = 0; _i < reducerKeys.length; _i++) {
+              let _key = reducerKeys[_i];
+              let reducer = reducers[_key];
+              let previousStateForKey = state[_key];
+              let nextStateForKey = reducer(previousStateForKey, action);
+              nextState[_key] = nextStateForKey;
+              hasChanged = hasChanged || nextStateForKey !== previousStateForKey;
+          }
+          hasChanged = hasChanged || reducerKeys.length !== Object.keys(state).length;
+          return hasChanged ? nextState : state;
+      };
+  }
+  function createSyncStore(reducers) {
+      let allReducers = reducers;
+      const store = createStore(combineReducers(allReducers));
+      function addReducers(reducers) {
+          const key = Object.keys(reducers).find(key => allReducers[key]);
+          if (key) {
+              return console.error(`存在与 ${key} 同名的store。`);
+          }
+          allReducers = {
+              ...allReducers,
+              ...reducers
+          };
+          store.replaceReducer(combineReducers(allReducers));
+      }
+      return {
+          store,
+          addReducers
+      };
   }
 
-  exports.Router = Router;
+  function createRemoteApp(option) {
+      const app = createApp(option);
+      function register(apps) {
+          if (!Array.isArray(apps)) {
+              apps = [apps];
+          }
+          app.register(apps.map((app) => {
+              return {
+                  name: app.name,
+                  active: app.active,
+                  loader: async () => {
+                      const { lifecycle, styleNodes } = await importHtml(app);
+                      let host;
+                      return {
+                          bootstrap: async (addReducers) => {
+                              host = document.createElement("div");
+                              host.id = "micro-" + app.name;
+                              document.body.appendChild(host);
+                              styleNodes.forEach((styleNode) => {
+                                  document.head.appendChild(styleNode);
+                              });
+                              await lifecycle.bootstrap(addReducers);
+                          },
+                          mount: async (store) => {
+                              await lifecycle.mount(host, store);
+                          },
+                          unmount: async (store) => {
+                              await lifecycle.unmount(host, store);
+                          }
+                      };
+                  },
+                  meta: app.meta
+              };
+          }));
+      }
+      return {
+          ...app,
+          register: register
+      };
+  }
+
+  exports.combineReducers = combineReducers;
+  exports.createApp = createApp;
+  exports.createRemoteApp = createRemoteApp;
+  exports.createRouter = createRouter;
+  exports.createStore = createStore;
+  exports.createSyncStore = createSyncStore;
   exports.importHtml = importHtml;
-  exports.register = register;
-  exports.registerApps = registerApps;
-  exports.updateApps = updateApps;
 
   Object.defineProperty(exports, '__esModule', { value: true });
 

@@ -17,12 +17,40 @@
 <body>
 <script>
 window.b = {
-  mount: function (host) {
+  bootstrap: function (addReducers) {
+    function bStore (state, action) {
+      switch (action.type) {
+        case "ADD":
+          return { ...state, name: action.name };
+        default:
+          return { name: "b的默认name" };
+      }
+    }
+
+    addReducers({
+      bStore
+    });
+  },
+  mount: async function (host, store) {
     const el = document.createElement("div");
     host.appendChild(el);
     vm = new Vue({
       el: el,
-      template: `<div id="b">b模块</div>`
+      data: {
+        name: store.getState().bStore.name
+      },
+      watch: {
+        name () {
+          store.dispatch({
+            type: "ADD",
+            name: this.name
+          });
+        }
+      },
+      template: `<div id="b">
+      b模块
+      <input type="text" v-model="name">
+      </div>`
     });
   },
   unmount: function (host) {
