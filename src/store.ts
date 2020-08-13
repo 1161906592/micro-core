@@ -104,7 +104,7 @@ export function combineReducers(reducers: StoreReducersMapObject) {
   };
 }
 
-export function createSyncStore<S, A extends StoreAction>(reducers: StoreReducersMapObject) {
+export function createAsyncStore<S, A extends StoreAction>(reducers: StoreReducersMapObject) {
   let allReducers = reducers;
   const store = createStore(combineReducers(allReducers));
 

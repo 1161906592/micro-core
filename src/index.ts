@@ -50,4 +50,5 @@ export function createRemoteApp(): CreatedApp<RemoteAppConfig> {
 export { createApp } from "./app";
 export { importHtml } from "./html-loader";
 export { createRouter } from "./router";
-export { createStore, combineReducers, createSyncStore } from "./store";
+export { createStore, combineReducers, createAsyncStore } from "./store";
+export { createVueAppLifecycle } from "./adapters";

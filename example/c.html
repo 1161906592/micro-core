@@ -34,30 +34,18 @@
 let vm;
 window.c = {
   bootstrap: function () {
-    function cStore (state, action) {
-      switch (action.type) {
-        case "ADD":
-          return { ...state, name: action.name };
-        default:
-          return { name: 1 };
-      }
-    }
-
-    // addReducers({
-    //   cStore: cStore
-    // });
   },
-  mount: function (host) {
+  mount: function (host, ) {
     // console.log(store.getState());
     vm = new Vue({
       el: host.querySelector(".root"),
       data: {
-        name: ""
+        name: (asyncStore.store.getState().appOneStore || {}).name
       },
       watch: {
         name () {
           store.dispatch({
-            type: "ADD",
+            type: "ONE_ADD",
             name: this.name
           });
         }

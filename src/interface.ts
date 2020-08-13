@@ -1,4 +1,4 @@
-import { createStore } from "./store";
+import { createAsyncStore, createStore } from "./store";
 
 export interface CreatedApp<T extends AppBaseConfig = AppConfig> {
   register: (apps: T | T[]) => void;
@@ -59,7 +59,4 @@ export type Store = ReturnType<typeof createStore>;
 
 export type AddReducers = (reducers: StoreReducersMapObject) => void;
 
-export interface CreatedSyncStore {
-  store: Store;
-  addReducers: AddReducers;
-}
+export type AsyncStore = ReturnType<typeof createAsyncStore>

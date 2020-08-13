@@ -194,7 +194,6 @@
       return rewritten;
   }
 
-  // const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
   // 目前只识别 .css结尾的css外链
   const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
   // 目前只识别 .js结尾的js外链
@@ -362,7 +361,6 @@
           return `url(${wrap}${rewriteURL(rawUrl, domain, relative)}${wrap})`;
       });
   }
-  // const cssURLMap = new Map<string, 1>();
   async function loadCSSURL(cssURL) {
       return new Promise((resolve, reject) => {
           if (urlLoadedMap.get(cssURL)) {
@@ -611,7 +609,7 @@
           return hasChanged ? nextState : state;
       };
   }
-  function createSyncStore(reducers) {
+  function createAsyncStore(reducers) {
       let allReducers = reducers;
       const store = createStore(combineReducers(allReducers));
       function addReducers(reducers) {
@@ -628,6 +626,33 @@
       return {
           store,
           addReducers
+      };
+  }
+
+  function createVueAppLifecycle({ Vue, appOptions, store }) {
+      let instance;
+      let router;
+      async function bootstrap() {
+          if (store) {
+              store.asyncStore.addReducers(store.reducer);
+          }
+      }
+      async function mount(host) {
+          const div = document.createElement("div");
+          host.appendChild(div);
+          const options = appOptions();
+          router = options.router;
+          instance = new Vue(options).$mount(div);
+      }
+      async function unmount() {
+          instance.$destroy();
+          const teardownListeners = router.teardownListeners;
+          teardownListeners && teardownListeners();
+      }
+      return {
+          bootstrap,
+          mount,
+          unmount
       };
   }
 
@@ -675,10 +700,11 @@
 
   exports.combineReducers = combineReducers;
   exports.createApp = createApp;
+  exports.createAsyncStore = createAsyncStore;
   exports.createRemoteApp = createRemoteApp;
   exports.createRouter = createRouter;
   exports.createStore = createStore;
-  exports.createSyncStore = createSyncStore;
+  exports.createVueAppLifecycle = createVueAppLifecycle;
   exports.importHtml = importHtml;
 
   Object.defineProperty(exports, '__esModule', { value: true });

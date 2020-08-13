@@ -5,18 +5,30 @@ import store from "./store";
 
 Vue.config.productionTip = false;
 
-let instance;
+const lifecycle = window.micro.createVueAppLifecycle({
+  Vue,
+  appOptions: () => {
+    return {
+      router,
+      store,
+      render: h => h(App)
+    };
+  },
+  store: {
+    asyncStore: window.asyncStore,
+    reducer: {
+      appOneStore: function cStore (state, action) {
+        switch (action.type) {
+          case "ONE_ADD":
+            return { ...state, name: action.name };
+          default:
+            return { name: 1 };
+        }
+      }
+    }
+  }
+});
 
-export const bootstrap = () => {};
-export const mount = (host) => {
-  const div = document.createElement("div");
-  host.appendChild(div);
-  instance = new Vue({
-    router,
-    store,
-    render: h => h(App)
-  }).$mount(div);
-};
-export const unmount = () => {
-  instance.$destroy();
-};
+export const bootstrap = lifecycle.bootstrap;
+export const mount = lifecycle.mount;
+export const unmount = lifecycle.unmount;

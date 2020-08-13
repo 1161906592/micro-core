@@ -3,16 +3,29 @@ import App from "./App.vue";
 
 Vue.config.productionTip = false;
 
-let instance;
 
-export const bootstrap = () => {};
-export const mount = (host) => {
-  const div = document.createElement("div");
-  host.appendChild(div);
-  instance = new Vue({
-    render: h => h(App)
-  }).$mount(div);
-};
-export const unmount = () => {
-  instance.$destory();
-};
+const lifecycle = window.micro.createVueAppLifecycle({
+  Vue,
+  appOptions: () => {
+    return {
+      render: h => h(App)
+    };
+  },
+  store: {
+    asyncStore: window.asyncStore,
+    reducer: {
+      appNavStore: function cStore (state, action) {
+        switch (action.type) {
+          case "NAV_ADD":
+            return { ...state, name: action.name };
+          default:
+            return { name: 1 };
+        }
+      }
+    }
+  }
+});
+
+export const bootstrap = lifecycle.bootstrap;
+export const mount = lifecycle.mount;
+export const unmount = lifecycle.unmount;

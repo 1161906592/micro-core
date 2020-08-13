@@ -22,7 +22,7 @@ microRouter.beforeEach(function (to, from, next) {
   }
 });
 
-var store = micro.createSyncStore({});
+window.asyncStore = micro.createAsyncStore({});
 
 var app = micro.createRemoteApp();
 
