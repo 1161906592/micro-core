@@ -42,8 +42,7 @@ export function isExternalUrl(url: string) {
 const DOMAIN_RE = /(?:https?:)?\/\/[^/]+/;
 
 export function getDomain(url: string) {
-  const match = DOMAIN_RE.exec(url);
-  return match ? match[0] : "";
+  return DOMAIN_RE.exec(url)?.[0] ?? "";
 }
 
 export async function asyncReplace(input: string, re: RegExp, replacer: (match: RegExpExecArray) => string | Promise<string>) {

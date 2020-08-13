@@ -7,11 +7,13 @@ import {
   runQueue
 } from "./utils";
 
-const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
+// const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
 
-const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
+// 目前只识别 .css结尾的css外链
+const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
 
-const SCRIPT_URL_REGEX = `<script[^>]+src=["']?(${URL_REGEX}*)["']?[^>]*></script\\s*>`;
+// 目前只识别 .js结尾的js外链
+const SCRIPT_URL_REGEX = `<script[^>]+src=["']?([^"']*.js)["']?[^>]*></script\\s*>`;
 
 const SCRIPT_URL_RE = new RegExp(SCRIPT_URL_REGEX, "g");
 
@@ -60,8 +62,8 @@ function parseScript(template: string, domain: string, entry: string) {
 
   while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
     let [, scriptURL, script] = match;
-    scriptURL = (scriptURL || "").trim();
-    script = (script || "").trim();
+    scriptURL = scriptURL?.trim();
+    script = script?.trim();
     scriptURL && result.push({
       type: "url",
       value: isExternalUrl(scriptURL) ? scriptURL : rewriteURL(scriptURL, domain, entry)
@@ -90,6 +92,9 @@ function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
 }
 
 const scriptURLMap = new Map<string, 1>();
+scriptURLMap.forEach((item) => {
+  console.log(item);
+})
 
 async function loadScriptURL(scriptURL: string) {
   return new Promise((resolve, reject) => {
@@ -130,8 +135,8 @@ async function parseCSS(template: string, domain: string, entry: string) {
 
   while ((match = CSS_URL_STYLE_RE.exec(template))) {
     let [, cssURL, style] = match;
-    cssURL = (cssURL || "").trim();
-    style = (style || "").trim();
+    cssURL = cssURL?.trim();
+    style = style?.trim();
     cssURL && result.push({
       type: "url",
       value: isExternalUrl(cssURL) ? cssURL : rewriteURL(cssURL, domain, entry)
