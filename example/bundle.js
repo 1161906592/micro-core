@@ -144,6 +144,23 @@
       }
   }
 
+  function request(url) {
+      return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onreadystatechange = () => {
+              if (xhr.readyState === 4) {
+                  if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
+                      resolve(xhr.responseText);
+                  }
+                  else {
+                      reject(xhr);
+                  }
+              }
+          };
+          xhr.open("get", url);
+          xhr.send();
+      });
+  }
   function runQueue(queue, fn, cb) {
       next(0);
       function next(index) {
@@ -162,6 +179,27 @@
           }
       }
   }
+  const EXTERNAL_RE = /^(https?:)?\/\//;
+  function isExternalUrl(url) {
+      return EXTERNAL_RE.test(url);
+  }
+  const DOMAIN_RE = /(?:https?:)?\/\/[^/]+/;
+  function getDomain(url) {
+      const match = DOMAIN_RE.exec(url);
+      return match ? match[0] : "";
+  }
+  async function asyncReplace(input, re, replacer) {
+      let match;
+      let remaining = input;
+      let rewritten = "";
+      while ((match = re.exec(remaining))) {
+          rewritten += remaining.slice(0, match.index);
+          rewritten += await replacer(match);
+          remaining = remaining.slice(match.index + match[0].length);
+      }
+      rewritten += remaining;
+      return rewritten;
+  }
 
   const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
   const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
@@ -172,20 +210,22 @@
   const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
   const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
   async function importHtml(app) {
+      const domain = getDomain(app.entry);
       const template = await request(app.entry);
-      const [lifecycle] = await Promise.all([loadScript(template, window, app.name), loadCSS(template)]);
+      // 暂时采用css与js并行加载的模式
+      const [lifecycle] = await Promise.all([loadScript(template, window, app.name, domain, app.entry), loadCSS(template, domain, app.entry)]);
       const bodyHTML = loadBody(template);
       return { lifecycle, bodyHTML };
   }
-  async function loadScript(template, global, name) {
+  function loadScript(template, global, name, domain, entry) {
       return new Promise(resolve => {
-          const result = parseScript(template);
+          const result = parseScript(template, domain, entry);
           runQueue(result.map((item) => {
               switch (item.type) {
-                  case "script":
-                      return runScript.bind(void 0, item.value, global);
-                  case "scriptURL":
+                  case "url":
                       return loadScriptURL.bind(void 0, item.value);
+                  case "code":
+                      return runScript.bind(void 0, item.value, global);
               }
           }), async (loader, next) => {
               await loader();
@@ -195,7 +235,7 @@
           });
       });
   }
-  function parseScript(template) {
+  function parseScript(template, domain, entry) {
       const result = [];
       SCRIPT_URL_CONTENT_RE.lastIndex = 0;
       let match;
@@ -204,11 +244,11 @@
           scriptURL = (scriptURL || "").trim();
           script = (script || "").trim();
           scriptURL && result.push({
-              type: "scriptURL",
-              value: scriptURL
+              type: "url",
+              value: isExternalUrl(scriptURL) ? scriptURL : rewriteURL(scriptURL, domain, entry)
           });
           script && result.push({
-              type: "script",
+              type: "code",
               value: script
           });
       }
@@ -225,15 +265,15 @@
   `);
       return resolver.call(global, global);
   }
-  const loadedScript = {};
+  const scriptURLMap = new Map();
   async function loadScriptURL(scriptURL) {
       return new Promise((resolve, reject) => {
-          if (loadedScript[scriptURL]) {
+          if (scriptURLMap.get(scriptURL)) {
               return resolve();
           }
           const scriptNode = document.createElement("script");
           scriptNode.onload = () => {
-              loadedScript[scriptURL] = 1;
+              scriptURLMap.set(scriptURL, 1);
               resolve();
           };
           scriptNode.onerror = reject;
@@ -243,20 +283,20 @@
           console.error(`script: ${scriptURL} 加载失败`, e);
       });
   }
-  async function loadCSS(template) {
-      const cssResult = parseCSS(template);
-      // 加载样式
+  async function loadCSS(template, domain, entry) {
+      const cssResult = await parseCSS(template, domain, entry);
+      // css按顺序并行加载
       await Promise.all(cssResult.map((item) => {
           switch (item.type) {
-              case "style":
-                  return loadStyle(item.value);
-              case "cssURL":
+              case "url":
                   return loadCSSURL(item.value);
+              case "code":
+                  return loadCSSCode(item.value);
           }
       }));
   }
   // 按顺序解析行内css和外链css
-  function parseCSS(template) {
+  async function parseCSS(template, domain, entry) {
       const result = [];
       CSS_URL_STYLE_RE.lastIndex = 0;
       let match;
@@ -264,23 +304,51 @@
           let [, cssURL, style] = match;
           cssURL = (cssURL || "").trim();
           style = (style || "").trim();
-          // todo 替换相对路径
           cssURL && result.push({
-              type: "cssURL",
-              value: cssURL
+              type: "url",
+              value: isExternalUrl(cssURL) ? cssURL : rewriteURL(cssURL, domain, entry)
           });
           style && result.push({
-              type: "style",
-              value: style
+              type: "code",
+              value: await rewriteCSSURLs(style, domain, entry)
           });
       }
       return result;
   }
+  function rewriteURL(url, domain, relative) {
+      if (url.startsWith("/")) {
+          return domain + url;
+      }
+      return relative.replace(/[^/]*$/, url);
+  }
+  const CSS_URL_RE = /url\(\s*('[^']+'|"[^"]+"|[^'")]+)\s*\)/;
+  function rewriteCSSURLs(css, domain, relative) {
+      return asyncReplace(css, CSS_URL_RE, async (match) => {
+          let [matched, rawUrl] = match;
+          let wrap = "";
+          const first = rawUrl[0];
+          if (first === `"` || first === `'`) {
+              wrap = first;
+              rawUrl = rawUrl.slice(1, -1);
+          }
+          if (isExternalUrl(rawUrl) || rawUrl.startsWith("data:") || rawUrl.startsWith("#")) {
+              return matched;
+          }
+          return `url(${wrap}${rewriteURL(rawUrl, domain, relative)}${wrap})`;
+      });
+  }
+  const cssURLMap = new Map();
   async function loadCSSURL(cssURL) {
       return new Promise((resolve, reject) => {
+          if (cssURLMap.get(cssURL)) {
+              return resolve();
+          }
           const linkNode = document.createElement("link");
           linkNode.rel = "stylesheet";
-          linkNode.onload = resolve;
+          linkNode.onload = () => {
+              cssURLMap.set(cssURL, 1);
+              resolve();
+          };
           linkNode.onerror = reject;
           linkNode.href = cssURL;
           document.head.appendChild(linkNode);
@@ -288,7 +356,7 @@
           console.error(`css: ${cssURL} 加载失败`, e);
       });
   }
-  function loadStyle(style) {
+  function loadCSSCode(style) {
       const styleNode = document.createElement("style");
       styleNode.appendChild(document.createTextNode(style));
       document.head.appendChild(styleNode);
@@ -304,23 +372,6 @@
           }
           return `<!-- ${REPLACED_BY_BERIAL} Original script: inline script -->`;
       }
-  }
-  function request(url) {
-      return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onreadystatechange = () => {
-              if (xhr.readyState === 4) {
-                  if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
-                      resolve(xhr.responseText);
-                  }
-                  else {
-                      reject(xhr);
-                  }
-              }
-          };
-          xhr.open("get", url);
-          xhr.send();
-      });
   }
 
   function createRouter(base) {

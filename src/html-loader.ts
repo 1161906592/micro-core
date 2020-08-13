@@ -1,5 +1,11 @@
 import { RemoteAppConfig, RemoteAppLifecycle, ProxyType } from "./interface";
-import { runQueue } from "./utils";
+import {
+  asyncReplace,
+  getDomain,
+  isExternalUrl,
+  request,
+  runQueue
+} from "./utils";
 
 const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
 
@@ -20,21 +26,23 @@ export async function importHtml(app: RemoteAppConfig): Promise<{
   lifecycle: RemoteAppLifecycle;
   bodyHTML: string
 }> {
+  const domain = getDomain(app.entry);
   const template = await request(app.entry);
-  const [lifecycle] = await Promise.all([(loadScript(template, window, app.name) as Promise<RemoteAppLifecycle>), loadCSS(template)]);
+  // 暂时采用css与js并行加载的模式
+  const [lifecycle] = await Promise.all([loadScript(template, window, app.name, domain, app.entry), loadCSS(template, domain, app.entry)]);
   const bodyHTML = loadBody(template);
   return { lifecycle, bodyHTML };
 }
 
-export async function loadScript(template: string, global: ProxyType, name: string) {
+export function loadScript(template: string, global: ProxyType, name: string, domain: string, entry: string): Promise<RemoteAppLifecycle> {
   return new Promise(resolve => {
-    const result = parseScript(template);
+    const result = parseScript(template, domain, entry);
     runQueue(result.map((item) => {
       switch (item.type) {
-        case "script":
-          return runScript.bind(void 0, item.value, global);
-        case "scriptURL":
+        case "url":
           return loadScriptURL.bind(void 0, item.value);
+        case "code":
+          return runScript.bind(void 0, item.value, global);
       }
     }), async (loader: Function, next: Function) => {
       await loader();
@@ -45,8 +53,8 @@ export async function loadScript(template: string, global: ProxyType, name: stri
   });
 }
 
-function parseScript(template: string) {
-  const result: { type: "scriptURL" | "script", value: string }[] = [];
+function parseScript(template: string, domain: string, entry: string) {
+  const result: { type: "url" | "code", value: string }[] = [];
   SCRIPT_URL_CONTENT_RE.lastIndex = 0;
   let match;
 
@@ -55,11 +63,11 @@ function parseScript(template: string) {
     scriptURL = (scriptURL || "").trim();
     script = (script || "").trim();
     scriptURL && result.push({
-      type: "scriptURL",
-      value: scriptURL
+      type: "url",
+      value: isExternalUrl(scriptURL) ? scriptURL : rewriteURL(scriptURL, domain, entry)
     });
     script && result.push({
-      type: "script",
+      type: "code",
       value: script
     });
   }
@@ -81,16 +89,16 @@ function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
   return resolver.call(global, global);
 }
 
-const loadedScript: ProxyType = {};
+const scriptURLMap = new Map<string, 1>();
 
 async function loadScriptURL(scriptURL: string) {
   return new Promise((resolve, reject) => {
-    if (loadedScript[scriptURL]) {
+    if (scriptURLMap.get(scriptURL)) {
       return resolve();
     }
     const scriptNode = document.createElement("script");
     scriptNode.onload = () => {
-      loadedScript[scriptURL] = 1;
+      scriptURLMap.set(scriptURL, 1);
       resolve();
     };
     scriptNode.onerror = reject;
@@ -101,22 +109,22 @@ async function loadScriptURL(scriptURL: string) {
   });
 }
 
-async function loadCSS(template: string) {
-  const cssResult = parseCSS(template);
-  // 加载样式
+async function loadCSS(template: string, domain: string, entry: string) {
+  const cssResult = await parseCSS(template, domain, entry);
+  // css按顺序并行加载
   await Promise.all(cssResult.map((item) => {
     switch (item.type) {
-      case "style":
-        return loadStyle(item.value);
-      case "cssURL":
+      case "url":
         return loadCSSURL(item.value);
+      case "code":
+        return loadCSSCode(item.value);
     }
   }));
 }
 
 // 按顺序解析行内css和外链css
-function parseCSS(template: string) {
-  const result: { type: "cssURL" | "style", value: string }[] = [];
+async function parseCSS(template: string, domain: string, entry: string) {
+  const result: { type: "url" | "code", value: string }[] = [];
   CSS_URL_STYLE_RE.lastIndex = 0;
   let match;
 
@@ -124,30 +132,54 @@ function parseCSS(template: string) {
     let [, cssURL, style] = match;
     cssURL = (cssURL || "").trim();
     style = (style || "").trim();
-    // todo 替换相对路径
     cssURL && result.push({
-      type: "cssURL",
-      value: cssURL
+      type: "url",
+      value: isExternalUrl(cssURL) ? cssURL : rewriteURL(cssURL, domain, entry)
     });
     style && result.push({
-      type: "style",
-      value: style
+      type: "code",
+      value: await rewriteCSSURLs(style, domain, entry)
     });
   }
   return result;
 }
 
-const loadedCSSURL: ProxyType = {};
+function rewriteURL(url: string, domain: string, relative: string) {
+  if (url.startsWith("/")) {
+    return domain + url;
+  }
+  return relative.replace(/[^/]*$/, url);
+}
+
+export const CSS_URL_RE = /url\(\s*('[^']+'|"[^"]+"|[^'")]+)\s*\)/;
+
+function rewriteCSSURLs(css: string, domain: string, relative: string) {
+  return asyncReplace(css, CSS_URL_RE, async (match) => {
+    let [matched, rawUrl] = match;
+    let wrap = "";
+    const first = rawUrl[0];
+    if (first === `"` || first === `'`) {
+      wrap = first;
+      rawUrl = rawUrl.slice(1, -1);
+    }
+    if (isExternalUrl(rawUrl) || rawUrl.startsWith("data:") || rawUrl.startsWith("#")) {
+      return matched;
+    }
+    return `url(${wrap}${rewriteURL(rawUrl, domain, relative)}${wrap})`;
+  });
+}
+
+const cssURLMap = new Map<string, 1>();
 
 async function loadCSSURL(cssURL: string) {
   return new Promise((resolve, reject) => {
-    if (loadedCSSURL[cssURL]) {
+    if (cssURLMap.get(cssURL)) {
       return resolve();
     }
     const linkNode = document.createElement("link");
     linkNode.rel = "stylesheet";
     linkNode.onload = () => {
-      loadedCSSURL[cssURL] = 1;
+      cssURLMap.set(cssURL, 1);
       resolve();
     };
     linkNode.onerror = reject;
@@ -158,7 +190,7 @@ async function loadCSSURL(cssURL: string) {
   });
 }
 
-function loadStyle(style: string) {
+function loadCSSCode(style: string) {
   const styleNode = document.createElement("style");
   styleNode.appendChild(document.createTextNode(style));
   document.head.appendChild(styleNode);
@@ -177,21 +209,4 @@ function loadBody(template: string): string {
     }
     return `<!-- ${REPLACED_BY_BERIAL} Original script: inline script -->`;
   }
-}
-
-function request(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState === 4) {
-        if (xhr.status >= 200 && xhr.status < 300 || xhr.status === 304) {
-          resolve(xhr.responseText);
-        } else {
-          reject(xhr);
-        }
-      }
-    };
-    xhr.open("get", url);
-    xhr.send();
-  });
 }
