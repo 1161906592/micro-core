@@ -19,27 +19,27 @@ export default {
     replace({
       __DEV__: true
     }),
-    babel({
-      babelrc: false,
-      "include": [
-        "src/**"
-      ],
-      "extensions": ["ts"],
-      "babelHelpers": "runtime",
-      "presets": [
-        [
-          "@babel/preset-env",
-          {
-            "targets": {
-              "browsers": ["chrome 81"]
-            },
-            "useBuiltIns": "usage",
-            "corejs": 2
-          }
-        ]
-      ],
-      "plugins": ["@babel/plugin-transform-runtime"]
-    }),
+    // babel({
+    //   babelrc: false,
+    //   "include": [
+    //     "src/**"
+    //   ],
+    //   "extensions": ["ts"],
+    //   "babelHelpers": "runtime",
+    //   "presets": [
+    //     [
+    //       "@babel/preset-env",
+    //       {
+    //         "targets": {
+    //           "browsers": ["chrome 81"]
+    //         },
+    //         "useBuiltIns": "usage",
+    //         "corejs": 2
+    //       }
+    //     ]
+    //   ],
+    //   "plugins": ["@babel/plugin-transform-runtime"]
+    // }),
     // terser()
   ],
   // external: id => id.includes('@babel/runtime'),

@@ -28,35 +28,62 @@ export async function importHtml(app: RemoteAppConfig): Promise<{
   lifecycle: RemoteAppLifecycle;
   bodyHTML: string
 }> {
-  const domain = getDomain(app.entry);
-  const template = await request(app.entry);
+  const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
   // 暂时采用css与js并行加载的模式
-  const [lifecycle] = await Promise.all([loadScript(template, window, app.name, domain, app.entry), loadCSS(template, domain, app.entry)]);
+  const [lifecycle] = await Promise.all([loadScript(parsedScripts, window, app.name), loadCSS(parsedCSSs)]);
   const bodyHTML = loadBody(template);
   return { lifecycle, bodyHTML };
 }
 
-export function loadScript(template: string, global: ProxyType, name: string, domain: string, entry: string): Promise<RemoteAppLifecycle> {
-  return new Promise(resolve => {
-    const result = parseScript(template, domain, entry);
-    runQueue(result.map((item) => {
-      switch (item.type) {
-        case "url":
-          return loadScriptURL.bind(void 0, item.value);
-        case "code":
-          return runScript.bind(void 0, item.value, global);
-      }
-    }), async (loader: Function, next: Function) => {
-      await loader();
-      next();
-    }, () => {
-      resolve(global[name]);
-    });
-  });
+export async function prefetchApps(apps: RemoteAppConfig[]) {
+  (window as any).requestIdleCallback(() => {
+    apps.forEach(async (app) => {
+      // todo 预加载节点
+      const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
+      console.log(111, template, parsedCSSs, parsedScripts);
+    })
+  })
 }
 
-function parseScript(template: string, domain: string, entry: string) {
-  const result: { type: "url" | "code", value: string }[] = [];
+interface PrefetchAppResult {
+  template: string;
+  parsedCSSs: ParsedResult;
+  parsedScripts: ParsedResult;
+}
+
+const entryMap = new Map<string, PrefetchAppResult>();
+
+async function prefetchEntry(entry: string): Promise<PrefetchAppResult> {
+  let result = entryMap.get(entry);
+  if (result) {
+    return result;
+  }
+  const domain = getDomain(entry);
+  const template = await loadHtml(entry);
+  const parsedCSSs = await parseCSS(template, domain, entry);
+  const parsedScripts = await parseScript(template, domain, entry);
+  result = { template, parsedCSSs, parsedScripts };
+  entryMap.set(entry, result);
+  return result;
+}
+
+const htmlMap = new Map<string, string>();
+
+async function loadHtml(entry: string) {
+  let cacheHtml = htmlMap.get(entry);
+  if (cacheHtml) {
+    return cacheHtml;
+  }
+  htmlMap.set(entry, "pending");
+  cacheHtml = await request(entry);
+  htmlMap.set(entry, cacheHtml);
+  return cacheHtml;
+}
+
+type ParsedResult = { type: "url" | "code", value: string }[];
+
+async function parseScript(template: string, domain: string, entry: string) {
+  const result: ParsedResult = [];
   SCRIPT_URL_CONTENT_RE.lastIndex = 0;
   let match;
 
@@ -76,6 +103,24 @@ function parseScript(template: string, domain: string, entry: string) {
   return result;
 }
 
+function loadScript(parsedScripts: ParsedResult, global: ProxyType, name: string): Promise<RemoteAppLifecycle> {
+  return new Promise(async resolve => {
+    runQueue(parsedScripts.map((item) => {
+      switch (item.type) {
+        case "url":
+          return loadScriptURL.bind(void 0, item.value);
+        case "code":
+          return runScript.bind(void 0, item.value, global);
+      }
+    }), async (loader: Function, next: Function) => {
+      await loader();
+      next();
+    }, () => {
+      resolve(global[name]);
+    });
+  });
+}
+
 function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
   const resolver = new Function(
   "window",
@@ -92,9 +137,6 @@ function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
 }
 
 const scriptURLMap = new Map<string, 1>();
-scriptURLMap.forEach((item) => {
-  console.log(item);
-})
 
 async function loadScriptURL(scriptURL: string) {
   return new Promise((resolve, reject) => {
@@ -114,22 +156,9 @@ async function loadScriptURL(scriptURL: string) {
   });
 }
 
-async function loadCSS(template: string, domain: string, entry: string) {
-  const cssResult = await parseCSS(template, domain, entry);
-  // css按顺序并行加载
-  await Promise.all(cssResult.map((item) => {
-    switch (item.type) {
-      case "url":
-        return loadCSSURL(item.value);
-      case "code":
-        return loadCSSCode(item.value);
-    }
-  }));
-}
-
 // 按顺序解析行内css和外链css
 async function parseCSS(template: string, domain: string, entry: string) {
-  const result: { type: "url" | "code", value: string }[] = [];
+  const result: ParsedResult = [];
   CSS_URL_STYLE_RE.lastIndex = 0;
   let match;
 
@@ -147,6 +176,18 @@ async function parseCSS(template: string, domain: string, entry: string) {
     });
   }
   return result;
+}
+
+async function loadCSS(parsedCSSs: ParsedResult) {
+  // css按顺序并行加载
+  await Promise.all(parsedCSSs.map((item) => {
+    switch (item.type) {
+      case "url":
+        return loadCSSURL(item.value);
+      case "code":
+        return loadCSSCode(item.value);
+    }
+  }));
 }
 
 function rewriteURL(url: string, domain: string, relative: string) {

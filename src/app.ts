@@ -2,10 +2,8 @@ import {
   AppConfig,
   AppLifecycle,
   CreatedApp,
-  Router,
-  Store
+  Router
 } from "./interface";
-import { CreatedSyncStore } from "./interface";
 
 enum AppStatus {
   NOT_LOAD,
@@ -22,7 +20,7 @@ interface App extends AppConfig, AppLifecycle {
   status: AppStatus;
 }
 
-export function createApp(option: { router?: Router, store?: CreatedSyncStore } = {}): CreatedApp {
+export function createApp(option: { router?: Router } = {}): CreatedApp {
   const registeredApps: App[] = [];
 
   function register(apps: AppConfig | AppConfig[]) {
@@ -46,15 +44,15 @@ export function createApp(option: { router?: Router, store?: CreatedSyncStore } 
   async function update() {
     const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
     await Promise.all(appsToUnmount.map(async (app) => {
-      return unmountApp(app, option.store && option.store.store);
+      return unmountApp(app);
     }));
     appsToLoad.forEach(async (app) => {
       await loadApp(app);
-      await bootStrapApp(app, option.store);
-      await mountApp(app, option.store && option.store.store);
+      await bootStrapApp(app);
+      await mountApp(app);
     });
     appsToMount.forEach(async (app) => {
-      await mountApp(app, option.store && option.store.store);
+      await mountApp(app);
     });
   }
 
@@ -114,42 +112,42 @@ async function loadApp(app: App) {
   }
 }
 
-async function bootStrapApp(app: App, syncStore?: CreatedSyncStore) {
+async function bootStrapApp(app: App) {
   if (app.status !== AppStatus.NOT_BOOTSTRAPPED) {
     return;
   }
   try {
     app.status = AppStatus.BOOTSTRAPPING;
-    await app.bootstrap(syncStore && syncStore.addReducers);
+    await app.bootstrap();
     app.status = AppStatus.NOT_MOUNTED;
   } catch (e) {
     console.error(`${app.name} 初始化失败。`, e);
   }
 }
 
-async function mountApp(app: App, store?: Store) {
+async function mountApp(app: App) {
   if (app.status !== AppStatus.NOT_MOUNTED || !app.active()) {
     return;
   }
   try {
     app.status = AppStatus.MOUNTING;
-    await app.mount(store);
+    await app.mount();
     app.status = AppStatus.MOUNTED;
     if (!app.active()) {
-      await unmountApp(app, store);
+      await unmountApp(app);
     }
   } catch (e) {
     console.error(`${app.name} 挂载失败。`, e);
   }
 }
 
-async function unmountApp(app: App, store?: Store) {
+async function unmountApp(app: App) {
   if (app.status !== AppStatus.MOUNTED || app.active()) {
     return;
   }
   try {
     app.status = AppStatus.UN_MOUNTING;
-    await app.unmount(store);
+    await app.unmount();
     app.status = AppStatus.NOT_MOUNTED;
   } catch (e) {
     console.error(`${app.name} 卸载失败。`, e);

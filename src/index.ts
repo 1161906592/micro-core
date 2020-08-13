@@ -1,12 +1,10 @@
 import {
-  AddReducers,
   CreatedApp,
   RemoteAppConfig,
-  Router,
-  Store
+  Router
 } from "./interface";
 import { createApp } from "./app";
-import { importHtml } from "./html-loader";
+import { importHtml, prefetchApps } from "./html-loader";
 
 export function createRemoteApp(option?: { router?: Router, store?: any }): CreatedApp<RemoteAppConfig> {
   const app = createApp(option);
@@ -23,19 +21,19 @@ export function createRemoteApp(option?: { router?: Router, store?: any }): Crea
           const { lifecycle, bodyHTML } = await importHtml(app);
           let host: HTMLDivElement;
           return {
-            bootstrap: async (addReducers?: AddReducers) => {
+            bootstrap: async () => {
               host = document.createElement("div");
               host.id = "micro-" + app.name;
               host.innerHTML = bodyHTML;
               document.body.appendChild(host);
-              await lifecycle.bootstrap(addReducers);
+              await lifecycle.bootstrap();
             },
-            mount: async (store?: Store) => {
+            mount: async () => {
               host.innerHTML = bodyHTML;
-              await lifecycle.mount(host, store);
+              await lifecycle.mount(host);
             },
-            unmount: async (store?: Store) => {
-              await lifecycle.unmount(host, store);
+            unmount: async () => {
+              await lifecycle.unmount(host);
               host.innerHTML = "";
             }
           };
@@ -43,6 +41,7 @@ export function createRemoteApp(option?: { router?: Router, store?: any }): Crea
         meta: app.meta
       };
     }));
+    prefetchApps(apps);
   }
 
   return {

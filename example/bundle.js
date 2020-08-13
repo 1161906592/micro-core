@@ -37,15 +37,15 @@
       async function update() {
           const { appsToLoad, appsToMount, appsToUnmount } = diffApps();
           await Promise.all(appsToUnmount.map(async (app) => {
-              return unmountApp(app, option.store && option.store.store);
+              return unmountApp(app);
           }));
           appsToLoad.forEach(async (app) => {
               await loadApp(app);
-              await bootStrapApp(app, option.store);
-              await mountApp(app, option.store && option.store.store);
+              await bootStrapApp(app);
+              await mountApp(app);
           });
           appsToMount.forEach(async (app) => {
-              await mountApp(app, option.store && option.store.store);
+              await mountApp(app);
           });
       }
       function diffApps() {
@@ -101,42 +101,42 @@
           console.error(`${app.name} 加载失败。`, e);
       }
   }
-  async function bootStrapApp(app, syncStore) {
+  async function bootStrapApp(app) {
       if (app.status !== AppStatus.NOT_BOOTSTRAPPED) {
           return;
       }
       try {
           app.status = AppStatus.BOOTSTRAPPING;
-          await app.bootstrap(syncStore && syncStore.addReducers);
+          await app.bootstrap();
           app.status = AppStatus.NOT_MOUNTED;
       }
       catch (e) {
           console.error(`${app.name} 初始化失败。`, e);
       }
   }
-  async function mountApp(app, store) {
+  async function mountApp(app) {
       if (app.status !== AppStatus.NOT_MOUNTED || !app.active()) {
           return;
       }
       try {
           app.status = AppStatus.MOUNTING;
-          await app.mount(store);
+          await app.mount();
           app.status = AppStatus.MOUNTED;
           if (!app.active()) {
-              await unmountApp(app, store);
+              await unmountApp(app);
           }
       }
       catch (e) {
           console.error(`${app.name} 挂载失败。`, e);
       }
   }
-  async function unmountApp(app, store) {
+  async function unmountApp(app) {
       if (app.status !== AppStatus.MOUNTED || app.active()) {
           return;
       }
       try {
           app.status = AppStatus.UN_MOUNTING;
-          await app.unmount(store);
+          await app.unmount();
           app.status = AppStatus.NOT_MOUNTED;
       }
       catch (e) {
@@ -185,8 +185,7 @@
   }
   const DOMAIN_RE = /(?:https?:)?\/\/[^/]+/;
   function getDomain(url) {
-      const match = DOMAIN_RE.exec(url);
-      return match ? match[0] : "";
+      return DOMAIN_RE.exec(url)?.[0] ?? "";
   }
   async function asyncReplace(input, re, replacer) {
       let match;
@@ -201,26 +200,79 @@
       return rewritten;
   }
 
-  const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
-  const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?(${URL_REGEX}*)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
-  const SCRIPT_URL_REGEX = `<script[^>]+src=["']?(${URL_REGEX}*)["']?[^>]*></script\\s*>`;
+  // const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
+  // 目前只识别 .css结尾的css外链
+  const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
+  // 目前只识别 .js结尾的js外链
+  const SCRIPT_URL_REGEX = `<script[^>]+src=["']?([^"']*.js)["']?[^>]*></script\\s*>`;
   const SCRIPT_URL_RE = new RegExp(SCRIPT_URL_REGEX, "g");
   const SCRIPT_URL_CONTENT_RE = new RegExp(`${SCRIPT_URL_REGEX}|<script\\s*>([\\w\\W]+?)</script\\s*>`, "g");
   const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
   const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
   const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
   async function importHtml(app) {
-      const domain = getDomain(app.entry);
-      const template = await request(app.entry);
+      const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
       // 暂时采用css与js并行加载的模式
-      const [lifecycle] = await Promise.all([loadScript(template, window, app.name, domain, app.entry), loadCSS(template, domain, app.entry)]);
+      const [lifecycle] = await Promise.all([loadScript(parsedScripts, window, app.name), loadCSS(parsedCSSs)]);
       const bodyHTML = loadBody(template);
       return { lifecycle, bodyHTML };
   }
-  function loadScript(template, global, name, domain, entry) {
-      return new Promise(resolve => {
-          const result = parseScript(template, domain, entry);
-          runQueue(result.map((item) => {
+  async function prefetchApps(apps) {
+      window.requestIdleCallback(() => {
+          apps.forEach(async (app) => {
+              // todo
+              const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
+              console.log(111, template, parsedCSSs, parsedScripts);
+          });
+      });
+  }
+  const entryMap = new Map();
+  async function prefetchEntry(entry) {
+      let result = entryMap.get(entry);
+      if (result) {
+          return result;
+      }
+      const domain = getDomain(entry);
+      const template = await loadHtml(entry);
+      const parsedCSSs = await parseCSS(template, domain, entry);
+      const parsedScripts = await parseScript(template, domain, entry);
+      result = { template, parsedCSSs, parsedScripts };
+      entryMap.set(entry, result);
+      return result;
+  }
+  const htmlMap = new Map();
+  async function loadHtml(entry) {
+      let cacheHtml = htmlMap.get(entry);
+      if (cacheHtml) {
+          return cacheHtml;
+      }
+      htmlMap.set(entry, "pending");
+      cacheHtml = await request(entry);
+      htmlMap.set(entry, cacheHtml);
+      return cacheHtml;
+  }
+  async function parseScript(template, domain, entry) {
+      const result = [];
+      SCRIPT_URL_CONTENT_RE.lastIndex = 0;
+      let match;
+      while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
+          let [, scriptURL, script] = match;
+          scriptURL = scriptURL?.trim();
+          script = script?.trim();
+          scriptURL && result.push({
+              type: "url",
+              value: isExternalUrl(scriptURL) ? scriptURL : rewriteURL(scriptURL, domain, entry)
+          });
+          script && result.push({
+              type: "code",
+              value: script
+          });
+      }
+      return result;
+  }
+  function loadScript(parsedScripts, global, name) {
+      return new Promise(async (resolve) => {
+          runQueue(parsedScripts.map((item) => {
               switch (item.type) {
                   case "url":
                       return loadScriptURL.bind(void 0, item.value);
@@ -234,25 +286,6 @@
               resolve(global[name]);
           });
       });
-  }
-  function parseScript(template, domain, entry) {
-      const result = [];
-      SCRIPT_URL_CONTENT_RE.lastIndex = 0;
-      let match;
-      while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
-          let [, scriptURL, script] = match;
-          scriptURL = (scriptURL || "").trim();
-          script = (script || "").trim();
-          scriptURL && result.push({
-              type: "url",
-              value: isExternalUrl(scriptURL) ? scriptURL : rewriteURL(scriptURL, domain, entry)
-          });
-          script && result.push({
-              type: "code",
-              value: script
-          });
-      }
-      return result;
   }
   function runScript(script, global) {
       const resolver = new Function("window", `
@@ -283,18 +316,6 @@
           console.error(`script: ${scriptURL} 加载失败`, e);
       });
   }
-  async function loadCSS(template, domain, entry) {
-      const cssResult = await parseCSS(template, domain, entry);
-      // css按顺序并行加载
-      await Promise.all(cssResult.map((item) => {
-          switch (item.type) {
-              case "url":
-                  return loadCSSURL(item.value);
-              case "code":
-                  return loadCSSCode(item.value);
-          }
-      }));
-  }
   // 按顺序解析行内css和外链css
   async function parseCSS(template, domain, entry) {
       const result = [];
@@ -302,8 +323,8 @@
       let match;
       while ((match = CSS_URL_STYLE_RE.exec(template))) {
           let [, cssURL, style] = match;
-          cssURL = (cssURL || "").trim();
-          style = (style || "").trim();
+          cssURL = cssURL?.trim();
+          style = style?.trim();
           cssURL && result.push({
               type: "url",
               value: isExternalUrl(cssURL) ? cssURL : rewriteURL(cssURL, domain, entry)
@@ -314,6 +335,17 @@
           });
       }
       return result;
+  }
+  async function loadCSS(parsedCSSs) {
+      // css按顺序并行加载
+      await Promise.all(parsedCSSs.map((item) => {
+          switch (item.type) {
+              case "url":
+                  return loadCSSURL(item.value);
+              case "code":
+                  return loadCSSCode(item.value);
+          }
+      }));
   }
   function rewriteURL(url, domain, relative) {
       if (url.startsWith("/")) {
@@ -622,19 +654,19 @@
                       const { lifecycle, bodyHTML } = await importHtml(app);
                       let host;
                       return {
-                          bootstrap: async (addReducers) => {
+                          bootstrap: async () => {
                               host = document.createElement("div");
                               host.id = "micro-" + app.name;
                               host.innerHTML = bodyHTML;
                               document.body.appendChild(host);
-                              await lifecycle.bootstrap(addReducers);
+                              await lifecycle.bootstrap();
                           },
-                          mount: async (store) => {
+                          mount: async () => {
                               host.innerHTML = bodyHTML;
-                              await lifecycle.mount(host, store);
+                              await lifecycle.mount(host);
                           },
-                          unmount: async (store) => {
-                              await lifecycle.unmount(host, store);
+                          unmount: async () => {
+                              await lifecycle.unmount(host);
                               host.innerHTML = "";
                           }
                       };
@@ -642,6 +674,7 @@
                   meta: app.meta
               };
           }));
+          prefetchApps(apps);
       }
       return {
           ...app,

@@ -8,15 +8,11 @@
   <script src="bundle.js"></script>
 </head>
 <body>
-<div class="a">a</div>
-<div class="b">b</div>
-<div class="c">c</div>
-<div id="root"></div>
 <script>
 
-const router = micro.createRouter("/micro-core/example/");
+window.microRouter = micro.createRouter("/micro-core/example/");
 
-router.beforeEach((to, from, next) => {
+microRouter.beforeEach(function (to, from, next) {
   if (to !== "/a") {
     next();
   } else {
@@ -26,51 +22,30 @@ router.beforeEach((to, from, next) => {
   }
 });
 
-const store = micro.createSyncStore({});
+var store = micro.createSyncStore({});
 
-const app = micro.createRemoteApp({
-  store,
-  router
+var app = micro.createRemoteApp({
+  store: store,
+  router: window.microRouter
 });
+
 app.register([
   {
-    name: "a",
-    active: () => location.pathname.startsWith("/micro-core/example/a"),
-    entry: "/micro-core/example/a.html",
-    meta: {
-      path: "a"
-    }
-  },
-  {
-    name: "b",
-    active: () => {
-      return location.pathname.startsWith("/micro-core/example/b");
+    name: "appNav",
+    active: function () {
+      return true;
     },
-    entry: "/micro-core/example/b.html",
-    meta: {
-      path: "b"
-    }
+    entry: "http://localhost:80/microApp/"
   },
   {
-    name: "c",
-    active: () => location.pathname.startsWith("/micro-core/example/c"),
-    entry: "http://localhost:63342/micro-core/example/c.html",
-    meta: {
-      path: "c"
-    }
+    name: "appList",
+    active: function () {
+      return location.pathname.startsWith("/micro-core/example/list");
+    },
+    entry: "http://localhost:81/microApp/"
   }
 ]);
 app.update();
-
-document.getElementsByClassName("a")[0].onclick = function () {
-  router.push("/a");
-};
-document.getElementsByClassName("b")[0].onclick = function () {
-  router.push("/b");
-};
-document.getElementsByClassName("c")[0].onclick = function () {
-  router.push("/c");
-};
 </script>
 </body>
 </html>

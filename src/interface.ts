@@ -6,15 +6,15 @@ export interface CreatedApp<T extends AppBaseConfig = AppConfig> {
 }
 
 export interface AppLifecycle {
-  bootstrap: (addReducers?: AddReducers) => Promise<void>;
-  mount: (store?: Store) => Promise<void>;
-  unmount: (store?: Store) => Promise<void>;
+  bootstrap: () => Promise<void>;
+  mount: () => Promise<void>;
+  unmount: () => Promise<void>;
 }
 
 export interface RemoteAppLifecycle {
-  bootstrap: (addReducers?: AddReducers) => Promise<void>;
-  mount: (host: HTMLDivElement, store?: Store) => Promise<void>;
-  unmount: (host: HTMLDivElement, store?: Store) => Promise<void>;
+  bootstrap: () => Promise<void>;
+  mount: (host: HTMLDivElement, ) => Promise<void>;
+  unmount: (host: HTMLDivElement, ) => Promise<void>;
 }
 
 export interface AppBaseConfig {
