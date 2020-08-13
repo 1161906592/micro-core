@@ -5,6 +5,8 @@
       |
       <div @click="linkTo('/b')">b</div>
       |
+      <div @click="linkTo('/c')">c</div>
+      |
       <div @click="refresh">刷新</div>
     </div>
   </div>
@@ -23,7 +25,7 @@ export default {
 };
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

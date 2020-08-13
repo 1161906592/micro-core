@@ -1,13 +1,9 @@
-import {
-  CreatedApp,
-  RemoteAppConfig,
-  Router
-} from "./interface";
+import { CreatedApp, RemoteAppConfig } from "./interface";
 import { createApp } from "./app";
 import { importHtml, prefetchApps } from "./html-loader";
 
-export function createRemoteApp(option?: { router?: Router, store?: any }): CreatedApp<RemoteAppConfig> {
-  const app = createApp(option);
+export function createRemoteApp(): CreatedApp<RemoteAppConfig> {
+  const app = createApp();
 
   function register(apps: RemoteAppConfig | RemoteAppConfig[]) {
     if (!Array.isArray(apps)) {

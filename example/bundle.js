@@ -15,7 +15,7 @@
       AppStatus[AppStatus["MOUNTED"] = 6] = "MOUNTED";
       AppStatus[AppStatus["UN_MOUNTING"] = 7] = "UN_MOUNTING";
   })(AppStatus || (AppStatus = {}));
-  function createApp(option = {}) {
+  function createApp() {
       const registeredApps = [];
       function register(apps) {
           if (!Array.isArray(apps)) {
@@ -67,12 +67,6 @@
               }
           });
           return { appsToLoad, appsToMount, appsToUnmount };
-      }
-      if (option.router) {
-          option.router.afterEach((current, next) => {
-              update();
-              next();
-          });
       }
       return {
           register: register,
@@ -211,45 +205,45 @@
   const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
   const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
   async function importHtml(app) {
-      const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
-      // 暂时采用css与js并行加载的模式
+      const { template, parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+      // 目前采用css与js并行加载的模式
       const [lifecycle] = await Promise.all([loadScript(parsedScripts, window, app.name), loadCSS(parsedCSSs)]);
       const bodyHTML = loadBody(template);
       return { lifecycle, bodyHTML };
   }
   async function prefetchApps(apps) {
-      window.requestIdleCallback(() => {
+      const requestIdleCallback = window.requestIdleCallback;
+      requestIdleCallback && requestIdleCallback(() => {
           apps.forEach(async (app) => {
-              // todo
-              const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
-              console.log(111, template, parsedCSSs, parsedScripts);
+              const { parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+              [...parsedCSSs, ...parsedScripts].forEach((item) => {
+                  if (item.type === "url") {
+                      prefetchURL(item.value);
+                  }
+              });
           });
       });
   }
-  const entryMap = new Map();
-  async function prefetchEntry(entry) {
-      let result = entryMap.get(entry);
-      if (result) {
-          return result;
+  function prefetchURL(url) {
+      if (urlLoadedMap.get(url)) {
+          return;
       }
-      const domain = getDomain(entry);
-      const template = await loadHtml(entry);
-      const parsedCSSs = await parseCSS(template, domain, entry);
-      const parsedScripts = await parseScript(template, domain, entry);
-      result = { template, parsedCSSs, parsedScripts };
-      entryMap.set(entry, result);
-      return result;
+      const linkNode = document.createElement("link");
+      linkNode.href = url;
+      linkNode.rel = "prefetch";
+      document.head.append(linkNode);
   }
-  const htmlMap = new Map();
-  async function loadHtml(entry) {
-      let cacheHtml = htmlMap.get(entry);
-      if (cacheHtml) {
-          return cacheHtml;
+  const entryMap = new Map();
+  async function parseEntry(entry) {
+      const loader = entryMap.get(entry);
+      return await (loader ? loader : entryMap.set(entry, entryLoader()).get(entry));
+      async function entryLoader() {
+          const domain = getDomain(entry);
+          const template = await request(entry);
+          const parsedCSSs = await parseCSS(template, domain, entry);
+          const parsedScripts = await parseScript(template, domain, entry);
+          return { template, parsedCSSs, parsedScripts };
       }
-      htmlMap.set(entry, "pending");
-      cacheHtml = await request(entry);
-      htmlMap.set(entry, cacheHtml);
-      return cacheHtml;
   }
   async function parseScript(template, domain, entry) {
       const result = [];
@@ -298,17 +292,16 @@
   `);
       return resolver.call(global, global);
   }
-  const scriptURLMap = new Map();
+  // 目前认定同一个链接不会同时是script和css
+  const urlLoadedMap = new Map();
   async function loadScriptURL(scriptURL) {
       return new Promise((resolve, reject) => {
-          if (scriptURLMap.get(scriptURL)) {
+          if (urlLoadedMap.get(scriptURL)) {
               return resolve();
           }
+          urlLoadedMap.set(scriptURL, 1);
           const scriptNode = document.createElement("script");
-          scriptNode.onload = () => {
-              scriptURLMap.set(scriptURL, 1);
-              resolve();
-          };
+          scriptNode.onload = resolve;
           scriptNode.onerror = reject;
           scriptNode.src = scriptURL;
           document.head.appendChild(scriptNode);
@@ -369,18 +362,16 @@
           return `url(${wrap}${rewriteURL(rawUrl, domain, relative)}${wrap})`;
       });
   }
-  const cssURLMap = new Map();
+  // const cssURLMap = new Map<string, 1>();
   async function loadCSSURL(cssURL) {
       return new Promise((resolve, reject) => {
-          if (cssURLMap.get(cssURL)) {
+          if (urlLoadedMap.get(cssURL)) {
               return resolve();
           }
+          urlLoadedMap.set(cssURL, 1);
           const linkNode = document.createElement("link");
           linkNode.rel = "stylesheet";
-          linkNode.onload = () => {
-              cssURLMap.set(cssURL, 1);
-              resolve();
-          };
+          linkNode.onload = resolve;
           linkNode.onerror = reject;
           linkNode.href = cssURL;
           document.head.appendChild(linkNode);
@@ -640,8 +631,8 @@
       };
   }
 
-  function createRemoteApp(option) {
-      const app = createApp(option);
+  function createRemoteApp() {
+      const app = createApp();
       function register(apps) {
           if (!Array.isArray(apps)) {
               apps = [apps];

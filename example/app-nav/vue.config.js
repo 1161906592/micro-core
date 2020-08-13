@@ -1,4 +1,4 @@
-process.env.PUBLIC_PATH = "/microApp/";
+process.env.PUBLIC_PATH = "/nav/";
 
 module.exports = {
   /*

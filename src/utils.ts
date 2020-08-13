@@ -57,3 +57,7 @@ export async function asyncReplace(input: string, re: RegExp, replacer: (match: 
   rewritten += remaining;
   return rewritten;
 }
+
+export function isPromise(obj: any) {
+  return !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
+}

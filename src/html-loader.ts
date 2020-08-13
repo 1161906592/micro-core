@@ -7,8 +7,6 @@ import {
   runQueue
 } from "./utils";
 
-// const URL_REGEX = "(?:(?:https?):\/\/)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]";
-
 // 目前只识别 .css结尾的css外链
 const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
 
@@ -28,21 +26,35 @@ export async function importHtml(app: RemoteAppConfig): Promise<{
   lifecycle: RemoteAppLifecycle;
   bodyHTML: string
 }> {
-  const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
-  // 暂时采用css与js并行加载的模式
+  const { template, parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+  // 目前采用css与js并行加载的模式
   const [lifecycle] = await Promise.all([loadScript(parsedScripts, window, app.name), loadCSS(parsedCSSs)]);
   const bodyHTML = loadBody(template);
   return { lifecycle, bodyHTML };
 }
 
 export async function prefetchApps(apps: RemoteAppConfig[]) {
-  (window as any).requestIdleCallback(() => {
+  const requestIdleCallback = (window as any).requestIdleCallback;
+  requestIdleCallback && requestIdleCallback(() => {
     apps.forEach(async (app) => {
-      // todo 预加载节点
-      const { template, parsedCSSs, parsedScripts } = await prefetchEntry(app.entry);
-      console.log(111, template, parsedCSSs, parsedScripts);
-    })
-  })
+      const { parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+      [...parsedCSSs, ...parsedScripts].forEach((item) => {
+        if (item.type === "url") {
+          prefetchURL(item.value);
+        }
+      });
+    });
+  });
+}
+
+function prefetchURL(url: string) {
+  if (urlLoadedMap.get(url)) {
+    return;
+  }
+  const linkNode = document.createElement("link");
+  linkNode.href = url;
+  linkNode.rel = "prefetch";
+  document.head.append(linkNode);
 }
 
 interface PrefetchAppResult {
@@ -51,33 +63,20 @@ interface PrefetchAppResult {
   parsedScripts: ParsedResult;
 }
 
-const entryMap = new Map<string, PrefetchAppResult>();
+const entryMap = new Map<string, Promise<PrefetchAppResult>>();
 
-async function prefetchEntry(entry: string): Promise<PrefetchAppResult> {
-  let result = entryMap.get(entry);
-  if (result) {
-    return result;
+async function parseEntry(entry: string): Promise<PrefetchAppResult> {
+  const loader = entryMap.get(entry);
+
+  return await (loader ? loader : entryMap.set(entry, entryLoader()).get(entry)!);
+
+  async function entryLoader() {
+    const domain = getDomain(entry);
+    const template = await request(entry);
+    const parsedCSSs = await parseCSS(template, domain, entry);
+    const parsedScripts = await parseScript(template, domain, entry);
+    return { template, parsedCSSs, parsedScripts };
   }
-  const domain = getDomain(entry);
-  const template = await loadHtml(entry);
-  const parsedCSSs = await parseCSS(template, domain, entry);
-  const parsedScripts = await parseScript(template, domain, entry);
-  result = { template, parsedCSSs, parsedScripts };
-  entryMap.set(entry, result);
-  return result;
-}
-
-const htmlMap = new Map<string, string>();
-
-async function loadHtml(entry: string) {
-  let cacheHtml = htmlMap.get(entry);
-  if (cacheHtml) {
-    return cacheHtml;
-  }
-  htmlMap.set(entry, "pending");
-  cacheHtml = await request(entry);
-  htmlMap.set(entry, cacheHtml);
-  return cacheHtml;
 }
 
 type ParsedResult = { type: "url" | "code", value: string }[];
@@ -136,18 +135,17 @@ function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
   return resolver.call(global, global);
 }
 
-const scriptURLMap = new Map<string, 1>();
+// 目前认定同一个链接不会同时是script和css
+const urlLoadedMap = new Map<string, 1>();
 
 async function loadScriptURL(scriptURL: string) {
   return new Promise((resolve, reject) => {
-    if (scriptURLMap.get(scriptURL)) {
+    if (urlLoadedMap.get(scriptURL)) {
       return resolve();
     }
+    urlLoadedMap.set(scriptURL, 1);
     const scriptNode = document.createElement("script");
-    scriptNode.onload = () => {
-      scriptURLMap.set(scriptURL, 1);
-      resolve();
-    };
+    scriptNode.onload = resolve;
     scriptNode.onerror = reject;
     scriptNode.src = scriptURL;
     document.head.appendChild(scriptNode);
@@ -197,7 +195,7 @@ function rewriteURL(url: string, domain: string, relative: string) {
   return relative.replace(/[^/]*$/, url);
 }
 
-export const CSS_URL_RE = /url\(\s*('[^']+'|"[^"]+"|[^'")]+)\s*\)/;
+const CSS_URL_RE = /url\(\s*('[^']+'|"[^"]+"|[^'")]+)\s*\)/;
 
 function rewriteCSSURLs(css: string, domain: string, relative: string) {
   return asyncReplace(css, CSS_URL_RE, async (match) => {
@@ -215,19 +213,15 @@ function rewriteCSSURLs(css: string, domain: string, relative: string) {
   });
 }
 
-const cssURLMap = new Map<string, 1>();
-
 async function loadCSSURL(cssURL: string) {
   return new Promise((resolve, reject) => {
-    if (cssURLMap.get(cssURL)) {
+    if (urlLoadedMap.get(cssURL)) {
       return resolve();
     }
+    urlLoadedMap.set(cssURL, 1);
     const linkNode = document.createElement("link");
     linkNode.rel = "stylesheet";
-    linkNode.onload = () => {
-      cssURLMap.set(cssURL, 1);
-      resolve();
-    };
+    linkNode.onload = resolve;
     linkNode.onerror = reject;
     linkNode.href = cssURL;
     document.head.appendChild(linkNode);

@@ -24,10 +24,7 @@ microRouter.beforeEach(function (to, from, next) {
 
 var store = micro.createSyncStore({});
 
-var app = micro.createRemoteApp({
-  store: store,
-  router: window.microRouter
-});
+var app = micro.createRemoteApp();
 
 app.register([
   {
@@ -35,17 +32,29 @@ app.register([
     active: function () {
       return true;
     },
-    entry: "http://localhost:80/microApp/"
+    entry: "http://localhost:80/nav/"
   },
   {
     name: "appList",
     active: function () {
       return location.pathname.startsWith("/micro-core/example/list");
     },
-    entry: "http://localhost:81/microApp/"
+    entry: "http://localhost:81/one/"
+  },
+  {
+    name: "c",
+    active: function () {
+      return location.pathname.startsWith("/micro-core/example/c");
+    },
+    entry: "c.html"
   }
 ]);
 app.update();
+
+microRouter.afterEach((current, next) => {
+  app.update();
+  next();
+});
 </script>
 </body>
 </html>

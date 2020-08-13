@@ -1,9 +1,4 @@
-import {
-  AppConfig,
-  AppLifecycle,
-  CreatedApp,
-  Router
-} from "./interface";
+import { AppConfig, AppLifecycle, CreatedApp } from "./interface";
 
 enum AppStatus {
   NOT_LOAD,
@@ -20,7 +15,7 @@ interface App extends AppConfig, AppLifecycle {
   status: AppStatus;
 }
 
-export function createApp(option: { router?: Router } = {}): CreatedApp {
+export function createApp(): CreatedApp {
   const registeredApps: App[] = [];
 
   function register(apps: AppConfig | AppConfig[]) {
@@ -75,13 +70,6 @@ export function createApp(option: { router?: Router } = {}): CreatedApp {
       }
     });
     return { appsToLoad, appsToMount, appsToUnmount };
-  }
-
-  if (option.router) {
-    option.router.afterEach((current, next) => {
-      update();
-      next();
-    });
   }
 
   return {

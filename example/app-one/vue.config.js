@@ -1,8 +1,8 @@
-process.env.PUBLIC_PATH = "/microApp/";
+process.env.PUBLIC_PATH = "/one/";
 
 module.exports = {
   publicPath: process.env.PUBLIC_PATH,
-  outputDir: "microApp", // outputDir 应该和 publicPath 一致
+  outputDir: "one", // outputDir 应该和 publicPath 一致
   assetsDir: "static",
   configureWebpack: {
     output: {
