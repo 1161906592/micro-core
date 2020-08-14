@@ -19,7 +19,7 @@ export function createRemoteApp(): CreatedApp<RemoteAppConfig> {
           return {
             bootstrap: async () => {
               host = document.createElement("div");
-              host.id = "micro-" + app.name;
+              host.id = "whale-" + app.name;
               host.innerHTML = bodyHTML;
               document.body.appendChild(host);
               await lifecycle.bootstrap();

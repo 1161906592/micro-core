@@ -188,15 +188,14 @@ async function asyncReplace(input, re, replacer) {
     return rewritten;
 }
 
+// 只对rel为prefetch进行处理
+const PREFETCH_RE = /<link[^>]+rel=["']?prefetch["']?[^/>]*\/?>/;
+const PREFETCH_URL_RE = /href=["']?([^"']*)["']?/;
 // 目前只识别 .css结尾的css外链
-const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
+const CSS_URL_STYLE_RE = /<link[^>]+href=["']?([^"']*.css)["']?[^/>]*\/?>|<style\s*>([^<]*)<\/style\s*>/;
 // 目前只识别 .js结尾的js外链
-const SCRIPT_URL_REGEX = `<script[^>]+src=["']?([^"']*.js)["']?[^>]*></script\\s*>`;
-const SCRIPT_URL_RE = new RegExp(SCRIPT_URL_REGEX, "g");
-const SCRIPT_URL_CONTENT_RE = new RegExp(`${SCRIPT_URL_REGEX}|<script\\s*>([\\w\\W]+?)</script\\s*>`, "g");
+const SCRIPT_URL_CONTENT_RE = /<script[^>]+src=["']?([^"']*.js)["']?[^>]*><\/scripts*>|<script\s*>([\w\W]+?)<\/script\s*>/;
 const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
-const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
-const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
 async function importHtml(app) {
     const { template, parsedCSSs, parsedScripts } = await parseEntry(app.entry);
     // 目前采用css与js并行加载的模式
@@ -208,11 +207,14 @@ async function prefetchApps(apps) {
     const requestIdleCallback = window.requestIdleCallback;
     requestIdleCallback && requestIdleCallback(() => {
         apps.forEach(async (app) => {
-            const { parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+            const { parsedCSSs, parsedScripts, parsedPrefetchUrl } = await parseEntry(app.entry);
             [...parsedCSSs, ...parsedScripts].forEach((item) => {
                 if (item.type === "url") {
                     prefetchURL(item.value);
                 }
+            });
+            parsedPrefetchUrl.forEach((url) => {
+                prefetchURL(url);
             });
         });
     });
@@ -232,17 +234,35 @@ async function parseEntry(entry) {
     return await (loader ? loader : entryMap[entry] = entryLoader());
     async function entryLoader() {
         const domain = getDomain(entry);
-        const template = await request(entry);
-        const parsedCSSs = await parseCSS(template, domain, entry);
-        const parsedScripts = await parseScript(template, domain, entry);
-        return { template, parsedCSSs, parsedScripts };
+        const tpl = await request(entry);
+        const { tpl: parsedPrefetchTpl, result: parsedPrefetchUrl } = await parsePrefetch(tpl, domain, entry);
+        const { tpl: parsedCSSTpl, result: parsedCSSs } = await parseCSS(parsedPrefetchTpl, domain, entry);
+        const { tpl: parsedScriptTpl, result: parsedScripts } = await parseScript(parsedCSSTpl, domain, entry);
+        return {
+            template: parsedScriptTpl,
+            parsedCSSs,
+            parsedScripts,
+            parsedPrefetchUrl
+        };
     }
+}
+async function parsePrefetch(template, domain, entry) {
+    const result = [];
+    const replacedTpl = await asyncReplace(template, PREFETCH_RE, async (match) => {
+        const [link] = match;
+        let [, rawUrl] = PREFETCH_URL_RE.exec(link) || [];
+        rawUrl = rawUrl?.trim();
+        rawUrl && result.push(isExternalUrl(rawUrl) ? rawUrl : rewriteURL(rawUrl, domain, entry));
+        return "";
+    });
+    return {
+        tpl: replacedTpl,
+        result
+    };
 }
 async function parseScript(template, domain, entry) {
     const result = [];
-    SCRIPT_URL_CONTENT_RE.lastIndex = 0;
-    let match;
-    while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
+    const replacedTpl = await asyncReplace(template, SCRIPT_URL_CONTENT_RE, async (match) => {
         let [, scriptURL, script] = match;
         scriptURL = scriptURL?.trim();
         script = script?.trim();
@@ -254,8 +274,12 @@ async function parseScript(template, domain, entry) {
             type: "code",
             value: script
         });
-    }
-    return result;
+        return "";
+    });
+    return {
+        tpl: replacedTpl,
+        result
+    };
 }
 function loadScript(parsedScripts, global, name) {
     return new Promise(async (resolve) => {
@@ -305,9 +329,7 @@ async function loadScriptURL(scriptURL) {
 // 按顺序解析行内css和外链css
 async function parseCSS(template, domain, entry) {
     const result = [];
-    CSS_URL_STYLE_RE.lastIndex = 0;
-    let match;
-    while ((match = CSS_URL_STYLE_RE.exec(template))) {
+    const replacedTpl = await asyncReplace(template, CSS_URL_STYLE_RE, async (match) => {
         let [, cssURL, style] = match;
         cssURL = cssURL?.trim();
         style = style?.trim();
@@ -319,8 +341,12 @@ async function parseCSS(template, domain, entry) {
             type: "code",
             value: await rewriteCSSURLs(style, domain, entry)
         });
-    }
-    return result;
+        return "";
+    });
+    return {
+        tpl: replacedTpl,
+        result
+    };
 }
 async function loadCSS(parsedCSSs) {
     // css按顺序并行加载
@@ -377,16 +403,7 @@ function loadCSSCode(style) {
     document.head.appendChild(styleNode);
 }
 function loadBody(template) {
-    let bodyHTML = template.match(BODY_CONTENT_RE)?.[1] ?? "";
-    bodyHTML = bodyHTML.replace(SCRIPT_ANY_RE, scriptReplacer);
-    return bodyHTML;
-    function scriptReplacer(substring) {
-        const matchedURL = SCRIPT_URL_RE.exec(substring);
-        if (matchedURL) {
-            return `<!-- ${REPLACED_BY_BERIAL} Original script url: ${matchedURL[1]} -->`;
-        }
-        return `<!-- ${REPLACED_BY_BERIAL} Original script: inline script -->`;
-    }
+    return template.match(BODY_CONTENT_RE)?.[1] ?? "";
 }
 
 function createRouter(base) {
@@ -618,7 +635,7 @@ function createAsyncStore(reducers) {
         store.replaceReducer(combineReducers(allReducers));
     }
     return {
-        store,
+        ...store,
         addReducers
     };
 }
@@ -666,7 +683,7 @@ function createRemoteApp() {
                     return {
                         bootstrap: async () => {
                             host = document.createElement("div");
-                            host.id = "micro-" + app.name;
+                            host.id = "whale-" + app.name;
                             host.innerHTML = bodyHTML;
                             document.body.appendChild(host);
                             await lifecycle.bootstrap();

@@ -121,7 +121,7 @@ export function createAsyncStore<S, A extends StoreAction>(reducers: StoreReduce
   }
 
   return {
-    store,
+    ...store,
     addReducers
   };
 }

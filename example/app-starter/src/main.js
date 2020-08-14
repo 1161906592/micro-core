@@ -5,13 +5,13 @@ const time = Date.now();
 
 // 应用运行的路由
 function pathsInclude (paths) {
-  let pathArr = Array.isArray(paths) ? paths : [paths];
+  const pathArr = Array.isArray(paths) ? paths : [paths];
   return pathArr.some((path) => location.pathname.startsWith(basePath + path));
 }
 
 // 应用不运行的路由
 function pathsExclude (paths) {
-  let pathArr = Array.isArray(paths) ? paths : [paths];
+  const pathArr = Array.isArray(paths) ? paths : [paths];
   return pathArr.every((path) => !location.pathname.startsWith(basePath + path));
 }
 
@@ -30,20 +30,30 @@ async function main () {
       active: function () {
         return app.includes ? pathsInclude(app.includes) : (app.excludes && pathsExclude(app.excludes));
       },
-      entry: app.entry + `?=${time}`
+      entry: `${app.entry}?=${time}`
     };
   }));
-
-  router.afterEach((current, next) => {
-    app.update();
-    next();
-  });
 
   window.appStarter = {
     router,
     asyncStore,
     createVueAppLifecycle
   };
+
+  // 必须 将路由与应用绑定
+  router.afterEach((current, next) => {
+    app.update();
+    next();
+  });
+
+  router.beforeEach((to, form, next) => {
+    console.log(to);
+    if (to === "/b") {
+      next("/c");
+    } else {
+      next();
+    }
+  });
 
   router.beforeEach(function (to, from, next) {
     if (to !== "/a") {

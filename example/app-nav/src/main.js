@@ -15,7 +15,7 @@ const lifecycle = window.appStarter.createVueAppLifecycle({
     reducer: {
       appNavStore: function cStore(state, action) {
         switch (action.type) {
-          case "NAV_ADD":
+          case "NAV_NAME":
             return { ...state, name: action.name };
           default:
             return { name: 1 };

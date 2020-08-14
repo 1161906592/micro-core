@@ -7,20 +7,18 @@ import {
   runQueue
 } from "./utils";
 
+// 只对rel为prefetch进行处理
+const PREFETCH_RE = /<link[^>]+rel=["']?prefetch["']?[^/>]*\/?>/;
+
+const PREFETCH_URL_RE = /href=["']?([^"']*)["']?/;
+
 // 目前只识别 .css结尾的css外链
-const CSS_URL_STYLE_RE = new RegExp(`<link[^>]+href=["']?([^"']*.css)["']?[^/>]*/?>|<style\\s*>([^<]*)</style\\s*>`, "g");
+const CSS_URL_STYLE_RE = /<link[^>]+href=["']?([^"']*.css)["']?[^/>]*\/?>|<style\s*>([^<]*)<\/style\s*>/;
 
 // 目前只识别 .js结尾的js外链
-const SCRIPT_URL_REGEX = `<script[^>]+src=["']?([^"']*.js)["']?[^>]*></script\\s*>`;
-
-const SCRIPT_URL_RE = new RegExp(SCRIPT_URL_REGEX, "g");
-
-const SCRIPT_URL_CONTENT_RE = new RegExp(`${SCRIPT_URL_REGEX}|<script\\s*>([\\w\\W]+?)</script\\s*>`, "g");
+const SCRIPT_URL_CONTENT_RE = /<script[^>]+src=["']?([^"']*.js)["']?[^>]*><\/scripts*>|<script\s*>([\w\W]+?)<\/script\s*>/;
 
 const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
-const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
-
-const REPLACED_BY_BERIAL = "Script replaced by whale-spa.";
 
 export async function importHtml(app: RemoteAppConfig): Promise<{
   lifecycle: RemoteAppLifecycle;
@@ -37,11 +35,14 @@ export async function prefetchApps(apps: RemoteAppConfig[]) {
   const requestIdleCallback = (window as any).requestIdleCallback;
   requestIdleCallback && requestIdleCallback(() => {
     apps.forEach(async (app) => {
-      const { parsedCSSs, parsedScripts } = await parseEntry(app.entry);
+      const { parsedCSSs, parsedScripts, parsedPrefetchUrl } = await parseEntry(app.entry);
       [...parsedCSSs, ...parsedScripts].forEach((item) => {
         if (item.type === "url") {
           prefetchURL(item.value);
         }
+      });
+      parsedPrefetchUrl.forEach((url) => {
+        prefetchURL(url);
       });
     });
   });
@@ -61,6 +62,7 @@ interface PrefetchAppResult {
   template: string;
   parsedCSSs: ParsedResult;
   parsedScripts: ParsedResult;
+  parsedPrefetchUrl: string[];
 }
 
 const entryMap: { [key: string]: Promise<PrefetchAppResult> } = {};
@@ -72,21 +74,39 @@ async function parseEntry(entry: string): Promise<PrefetchAppResult> {
 
   async function entryLoader() {
     const domain = getDomain(entry);
-    const template = await request(entry);
-    const parsedCSSs = await parseCSS(template, domain, entry);
-    const parsedScripts = await parseScript(template, domain, entry);
-    return { template, parsedCSSs, parsedScripts };
+    const tpl = await request(entry);
+    const { tpl: parsedPrefetchTpl, result: parsedPrefetchUrl } = await parsePrefetch(tpl, domain, entry);
+    const { tpl: parsedCSSTpl, result: parsedCSSs } = await parseCSS(parsedPrefetchTpl, domain, entry);
+    const { tpl: parsedScriptTpl, result: parsedScripts } = await parseScript(parsedCSSTpl, domain, entry);
+    return {
+      template: parsedScriptTpl,
+      parsedCSSs,
+      parsedScripts,
+      parsedPrefetchUrl
+    };
   }
+}
+
+async function parsePrefetch(template: string, domain: string, entry: string) {
+  const result: string[] = [];
+  const replacedTpl = await asyncReplace(template, PREFETCH_RE, async (match) => {
+    const [link] = match;
+    let [, rawUrl] = PREFETCH_URL_RE.exec(link) || [];
+    rawUrl = rawUrl?.trim();
+    rawUrl && result.push(isExternalUrl(rawUrl) ? rawUrl : rewriteURL(rawUrl, domain, entry));
+    return "";
+  });
+  return {
+    tpl: replacedTpl,
+    result
+  };
 }
 
 type ParsedResult = { type: "url" | "code", value: string }[];
 
 async function parseScript(template: string, domain: string, entry: string) {
   const result: ParsedResult = [];
-  SCRIPT_URL_CONTENT_RE.lastIndex = 0;
-  let match;
-
-  while ((match = SCRIPT_URL_CONTENT_RE.exec(template))) {
+  const replacedTpl = await asyncReplace(template, SCRIPT_URL_CONTENT_RE, async (match) => {
     let [, scriptURL, script] = match;
     scriptURL = scriptURL?.trim();
     script = script?.trim();
@@ -98,8 +118,12 @@ async function parseScript(template: string, domain: string, entry: string) {
       type: "code",
       value: script
     });
-  }
-  return result;
+    return "";
+  });
+  return {
+    tpl: replacedTpl,
+    result
+  };
 }
 
 function loadScript(parsedScripts: ParsedResult, global: ProxyType, name: string): Promise<RemoteAppLifecycle> {
@@ -157,10 +181,7 @@ async function loadScriptURL(scriptURL: string) {
 // 按顺序解析行内css和外链css
 async function parseCSS(template: string, domain: string, entry: string) {
   const result: ParsedResult = [];
-  CSS_URL_STYLE_RE.lastIndex = 0;
-  let match;
-
-  while ((match = CSS_URL_STYLE_RE.exec(template))) {
+  const replacedTpl = await asyncReplace(template, CSS_URL_STYLE_RE, async (match) => {
     let [, cssURL, style] = match;
     cssURL = cssURL?.trim();
     style = style?.trim();
@@ -172,8 +193,12 @@ async function parseCSS(template: string, domain: string, entry: string) {
       type: "code",
       value: await rewriteCSSURLs(style, domain, entry)
     });
-  }
-  return result;
+    return "";
+  });
+  return {
+    tpl: replacedTpl,
+    result
+  };
 }
 
 async function loadCSS(parsedCSSs: ParsedResult) {
@@ -237,16 +262,5 @@ function loadCSSCode(style: string) {
 }
 
 function loadBody(template: string): string {
-  let bodyHTML = template.match(BODY_CONTENT_RE)?.[1] ?? "";
-  bodyHTML = bodyHTML.replace(SCRIPT_ANY_RE, scriptReplacer);
-
-  return bodyHTML;
-
-  function scriptReplacer(substring: string): string {
-    const matchedURL = SCRIPT_URL_RE.exec(substring);
-    if (matchedURL) {
-      return `<!-- ${REPLACED_BY_BERIAL} Original script url: ${matchedURL[1]} -->`;
-    }
-    return `<!-- ${REPLACED_BY_BERIAL} Original script: inline script -->`;
-  }
+  return template.match(BODY_CONTENT_RE)?.[1] ?? "";
 }

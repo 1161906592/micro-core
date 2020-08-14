@@ -13,19 +13,6 @@ const lifecycle = window.appStarter.createVueAppLifecycle({
       store,
       render: h => h(App)
     };
-  },
-  store: {
-    asyncStore: window.appStarter.asyncStore,
-    reducer: {
-      appOneStore: function cStore(state, action) {
-        switch (action.type) {
-          case "ONE_ADD":
-            return { ...state, name: action.name };
-          default:
-            return { name: 1 };
-        }
-      }
-    }
   }
 });
 

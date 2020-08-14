@@ -1,8 +1,8 @@
 module.exports = {
-  "plugins": {
+  plugins: {
     "postcss-global-namespace": {
-      getNameSpace (inputFile) {
-        return "#micro-appNav";
+      getNameSpace() {
+        return "#whale-appNav";
       }
     }
   }

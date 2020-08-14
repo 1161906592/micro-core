@@ -3,7 +3,7 @@ module.exports = {
     "postcss-global-namespace": {
       getNameSpace(inputFile) {
         console.log(inputFile);
-        return "#micro-appOne";
+        return "#whale-appOne";
       }
     }
   }

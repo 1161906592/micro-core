@@ -4,7 +4,10 @@ module.exports = {
   assetsDir: "static",
   configureWebpack: {
     output: {
-      filename: process.env.NODE_ENV === "development" ? "static/js/[name].js" : "static/js/[name].[contenthash].js",
+      filename:
+        process.env.NODE_ENV === "development"
+          ? "static/js/[name].js"
+          : "static/js/[name].[contenthash].js",
       libraryTarget: "umd",
       library: "appNav"
     }
