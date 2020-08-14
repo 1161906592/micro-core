@@ -4,8 +4,6 @@
  * @Date: 2020-02-28 10:24
  */
 "use strict";
-const path = require("path");
-const fs = require("fs-extra");
 const appConfig = require("../app.config");
 const webpack = require("webpack");
 const TerserPlugin = require("terser-webpack-plugin");
@@ -13,12 +11,13 @@ const isWsl = require("is-wsl/index");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const OptimizeCSSAssetsPlugin = require("optimize-css-assets-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-
-const resolveApp = relativePath => path.resolve(fs.realpathSync(process.cwd()), relativePath);
+const { resolveApp } = require("./utils");
+const getClientEnvironment = require("./env");
 
 const shouldUseSourceMap = false;
 const isEnvDevelopment = process.env.NODE_ENV === "development";
 const isEnvProduction = process.env.NODE_ENV === "production";
+const env = getClientEnvironment();
 
 module.exports = {
   mode: isEnvProduction ? "production" : isEnvDevelopment && "development",
@@ -181,9 +180,7 @@ module.exports = {
       chunkFilename: "register/css/[id].[contenthash:8].chunk.css",
     }),
     // 环境变量定义插件
-    new webpack.DefinePlugin({
-      "process.env": JSON.stringify(process.env)
-    }),
+    new webpack.DefinePlugin(env.stringified),
   ].filter(Boolean),
   node: {
     module: "empty",

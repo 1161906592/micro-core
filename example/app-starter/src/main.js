@@ -16,6 +16,10 @@ function pathsExclude (paths) {
 }
 
 async function main () {
+
+  console.log("环境变量：", process.env.WHALE_APP_NAME);
+  console.log("环境变量：", process.env.WHALE_APP_ALL_ENV);
+
   const application = JSON.parse(await request(`/application.json?=${time}`));
 
   const app = createRemoteApp();
