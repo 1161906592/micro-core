@@ -1,0 +1,14 @@
+{
+  "applications": [
+    {
+      "name": "appNav",
+      "excludes": [],
+      "entry": "http://localhost:80/index.html"
+    },
+    {
+      "name": "appOne",
+      "includes": ["/one"],
+      "entry": "http://localhost:81/index.html"
+    }
+  ]
+}

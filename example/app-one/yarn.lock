@@ -6639,6 +6639,11 @@ postcss-discard-overridden@^4.0.1:
   dependencies:
     postcss "^7.0.0"
 
+postcss-global-namespace@^0.0.2:
+  version "0.0.2"
+  resolved "https://registry.npm.taobao.org/postcss-global-namespace/download/postcss-global-namespace-0.0.2.tgz#83dff1f7ce899f740d03cb77b21de82e7f6fb02e"
+  integrity sha1-g9/x986Jn3QNA8t3sh3oLn9vsC4=
+
 postcss-load-config@^2.0.0:
   version "2.1.0"
   resolved "https://registry.npm.taobao.org/postcss-load-config/download/postcss-load-config-2.1.0.tgz#c84d692b7bb7b41ddced94ee62e8ab31b417b003"

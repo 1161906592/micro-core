@@ -52,3 +52,4 @@ export { importHtml } from "./html-loader";
 export { createRouter } from "./router";
 export { createStore, combineReducers, createAsyncStore } from "./store";
 export { createVueAppLifecycle } from "./adapters";
+export { request } from "./utils"

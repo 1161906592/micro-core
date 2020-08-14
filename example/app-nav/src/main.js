@@ -3,8 +3,7 @@ import App from "./App.vue";
 
 Vue.config.productionTip = false;
 
-
-const lifecycle = window.micro.createVueAppLifecycle({
+const lifecycle = window.appStarter.createVueAppLifecycle({
   Vue,
   appOptions: () => {
     return {
@@ -12,9 +11,9 @@ const lifecycle = window.micro.createVueAppLifecycle({
     };
   },
   store: {
-    asyncStore: window.asyncStore,
+    asyncStore: window.appStarter.asyncStore,
     reducer: {
-      appNavStore: function cStore (state, action) {
+      appNavStore: function cStore(state, action) {
         switch (action.type) {
           case "NAV_ADD":
             return { ...state, name: action.name };

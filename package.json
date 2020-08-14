@@ -1,7 +1,7 @@
 {
   "name": "micro-core",
   "version": "0.0.1",
-  "author": "liuyang",
+  "author": "1161906592@qq.com",
   "license": "MIT",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^14.0.0",

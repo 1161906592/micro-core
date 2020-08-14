@@ -20,7 +20,7 @@ const SCRIPT_URL_CONTENT_RE = new RegExp(`${SCRIPT_URL_REGEX}|<script\\s*>([\\w\
 const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
 const SCRIPT_ANY_RE = /<\s*script[^>]*>[\s\S]*?(<\s*\/script[^>]*>)/g;
 
-const REPLACED_BY_BERIAL = "Script replaced by MicroCore.";
+const REPLACED_BY_BERIAL = "Script replaced by whale-spa.";
 
 export async function importHtml(app: RemoteAppConfig): Promise<{
   lifecycle: RemoteAppLifecycle;
@@ -48,7 +48,7 @@ export async function prefetchApps(apps: RemoteAppConfig[]) {
 }
 
 function prefetchURL(url: string) {
-  if (urlLoadedMap.get(url)) {
+  if (urlLoadedMap[url]) {
     return;
   }
   const linkNode = document.createElement("link");
@@ -63,12 +63,12 @@ interface PrefetchAppResult {
   parsedScripts: ParsedResult;
 }
 
-const entryMap = new Map<string, Promise<PrefetchAppResult>>();
+const entryMap: { [key: string]: Promise<PrefetchAppResult> } = {};
 
 async function parseEntry(entry: string): Promise<PrefetchAppResult> {
-  const loader = entryMap.get(entry);
+  const loader = entryMap[entry];
 
-  return await (loader ? loader : entryMap.set(entry, entryLoader()).get(entry)!);
+  return await (loader ? loader : entryMap[entry] = entryLoader());
 
   async function entryLoader() {
     const domain = getDomain(entry);
@@ -136,14 +136,14 @@ function runScript(script: string, global: ProxyType): RemoteAppLifecycle {
 }
 
 // 目前认定同一个链接不会同时是script和css
-const urlLoadedMap = new Map<string, 1>();
+const urlLoadedMap: { [key: string]: 1 } = {};
 
 async function loadScriptURL(scriptURL: string) {
   return new Promise((resolve, reject) => {
-    if (urlLoadedMap.get(scriptURL)) {
+    if (urlLoadedMap[scriptURL]) {
       return resolve();
     }
-    urlLoadedMap.set(scriptURL, 1);
+    urlLoadedMap[scriptURL] = 1;
     const scriptNode = document.createElement("script");
     scriptNode.onload = resolve;
     scriptNode.onerror = reject;
@@ -215,10 +215,10 @@ function rewriteCSSURLs(css: string, domain: string, relative: string) {
 
 async function loadCSSURL(cssURL: string) {
   return new Promise((resolve, reject) => {
-    if (urlLoadedMap.get(cssURL)) {
+    if (urlLoadedMap[cssURL]) {
       return resolve();
     }
-    urlLoadedMap.set(cssURL, 1);
+    urlLoadedMap[cssURL] = 1;
     const linkNode = document.createElement("link");
     linkNode.rel = "stylesheet";
     linkNode.onload = resolve;

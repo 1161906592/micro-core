@@ -5,7 +5,7 @@ import store from "./store";
 
 Vue.config.productionTip = false;
 
-const lifecycle = window.micro.createVueAppLifecycle({
+const lifecycle = window.appStarter.createVueAppLifecycle({
   Vue,
   appOptions: () => {
     return {
@@ -15,9 +15,9 @@ const lifecycle = window.micro.createVueAppLifecycle({
     };
   },
   store: {
-    asyncStore: window.asyncStore,
+    asyncStore: window.appStarter.asyncStore,
     reducer: {
-      appOneStore: function cStore (state, action) {
+      appOneStore: function cStore(state, action) {
         switch (action.type) {
           case "ONE_ADD":
             return { ...state, name: action.name };

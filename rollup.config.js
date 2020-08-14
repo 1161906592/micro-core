@@ -20,7 +20,7 @@ export default {
   ],
   output: {
     file: "example/bundle.js",
-    format: "umd",
+    format: "es",
     name: "micro"
   }
 };
