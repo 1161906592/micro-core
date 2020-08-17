@@ -19,7 +19,7 @@ export default {
     }),
   ],
   output: {
-    file: "example/bundle.js",
+    file: "example/whale-spa.js",
     format: "es",
     name: "micro"
   }

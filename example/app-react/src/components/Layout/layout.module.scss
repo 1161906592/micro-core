@@ -1,0 +1,25 @@
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);
+  z-index: 100;
+  .inner {
+    height: 56px;
+  }
+}
+.inner {
+  max-width: 760px;
+  width: 92%;
+  margin: auto;
+}
+.main {
+  min-height: calc(100vh - 40px);
+  padding-top: 76px;
+}
+.footer {
+  height: 40px;
+  line-height: 40px;
+}

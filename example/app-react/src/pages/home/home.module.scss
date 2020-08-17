@@ -1,0 +1,40 @@
+.main {
+  background: #fff;
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);
+}
+.bb {
+  border-bottom: 1px solid #eaeaea;
+}
+.img {
+  width: 120px;
+  height: 120px;
+  border-radius: 4px;
+  overflow: hidden;
+  img {
+    width: 100%;
+    height: 100%;
+  }
+}
+.right {
+  width: calc(100% - 140px);
+}
+.name {
+  line-height: 24px;
+}
+.address {
+  line-height: 20px;
+}
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.introduce {
+  line-height: 22px;
+  height: 66px;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  text-align: justify;
+}

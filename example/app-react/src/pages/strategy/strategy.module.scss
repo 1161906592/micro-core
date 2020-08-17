@@ -1,0 +1,26 @@
+.section {
+  background: #fff;
+}
+.right {
+  flex: auto;
+  width: 200px;
+}
+.map {
+  height: 50vw;
+  max-height: 400px;
+}
+.titleLine, .routeLine {
+  padding: 0 10px;
+  background: #1890ff;
+  color: #fff;
+  line-height: 36px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.routeLine {
+  border-bottom: 1px solid #fff;
+  &:last-of-type {
+    border-bottom: none;
+  }
+}

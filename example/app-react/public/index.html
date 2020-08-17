@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8"/>
+  <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#000000"/>
+  <link rel="manifest" href="%PUBLIC_URL%/manifest.json"/>
+  <% for (var i in htmlWebpackPlugin.options.injectOption&&htmlWebpackPlugin.options.injectOption.css) { %>
+  <link href="<%= htmlWebpackPlugin.options.injectOption.css[i] %>" rel="stylesheet"/>
+  <% } %>
+  <title>旅游攻略</title>
+</head>
+<body>
+<noscript>You need to enable JavaScript to run this app.</noscript>
+<div id="global-loading">
+  <div class="spinner">
+    <div class="bounce"></div>
+    <div class="bounce"></div>
+    <div class="bounce"></div>
+  </div>
+</div>
+<div id="root"></div>
+<% for (var i in htmlWebpackPlugin.options.injectOption&&htmlWebpackPlugin.options.injectOption.js) { %>
+<script src="<%= htmlWebpackPlugin.options.injectOption.js[i] %>"></script>
+<% } %>
+</body>
+</html>
