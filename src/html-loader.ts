@@ -10,13 +10,13 @@ import {
 // 只对rel为prefetch进行处理
 const PREFETCH_RE = /<link[^>]+rel=["']?prefetch["']?[^/>]*\/?>/;
 
-const PREFETCH_URL_RE = /href=["']?([^"']*)["']?/;
+const PREFETCH_URL_RE = /href=["']?([^\s"']*)["']?/;
 
 // 目前只识别 .css结尾的css外链
-const CSS_URL_STYLE_RE = /<link[^>]+href=["']?([^"']*.css)["']?[^/>]*\/?>|<style\s*>([^<]*)<\/style\s*>/;
+const CSS_URL_STYLE_RE = /<link[^>]+href=["']?([^\s"']*.css)["']?[^/>]*\/?>|<style\s*>([^<]*)<\/style\s*>/;
 
 // 目前只识别 .js结尾的js外链
-const SCRIPT_URL_CONTENT_RE = /<script[^>]+src=["']?([^"']*.js)["']?[^>]*><\/scripts*>|<script\s*>([\w\W]+?)<\/script\s*>/;
+const SCRIPT_URL_CONTENT_RE = /<script[^>]+src=["']?([^\s"']*.js)["']?[^>]*><\/script\s*>|<script\s*>([\w\W]+?)<\/script\s*>/;
 
 const BODY_CONTENT_RE = /<\s*body[^>]*>([\w\W]*)<\s*\/body>/;
 

@@ -7,7 +7,12 @@
     },
     {
       "name": "appOne",
-      "includes": ["/one"],
+      "includes": ["/a/system"],
+      "entry": "http://localhost:81/index.html"
+    },
+    {
+      "name": "appOne",
+      "includes": ["/b/"],
       "entry": "http://localhost:81/index.html"
     }
   ]
